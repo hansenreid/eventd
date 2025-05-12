@@ -1,1 +1,6 @@
-pub fn main() !void {}
+const std = @import("std");
+const builtin = @import("builtin");
+
+pub fn main() !void {
+    @compileLog(builtin.os.tag);
+}
