@@ -1,10 +1,16 @@
 const builtin = @import("builtin");
 const linux_io = @import("io/linux.zig");
+const wasm_io = @import("io/wasm.zig");
 
 pub fn main() !void {
+    run();
+}
+
+export fn run() void {
     var io_impl = comptime blk: {
         switch (builtin.os.tag) {
-            .linux => break :blk linux_io{},
+            .linux, .wasi => break :blk linux_io{},
+            .freestanding => break :blk wasm_io{},
             else => @compileError("Target not supported"),
         }
     };

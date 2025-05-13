@@ -1,9 +1,10 @@
-const std = @import("std");
 const IO = @import("../io.zig");
 
-pub const linux_io = @This();
+extern fn jsLog(ptr: [*]const u8, len: usize) void;
 
-pub fn io(self: *linux_io) IO {
+pub const wasm_io = @This();
+
+pub fn io(self: *wasm_io) IO {
     return .{
         .ptr = self,
         .vtable = &IO.VTable{
@@ -13,8 +14,8 @@ pub fn io(self: *linux_io) IO {
 }
 
 fn log(ptr: *anyopaque, msg: []const u8) void {
-    const self: *linux_io = @ptrCast(@alignCast(ptr));
+    const self: *wasm_io = @ptrCast(@alignCast(ptr));
     _ = self;
 
-    std.debug.print("{s}\n", .{msg});
+    jsLog(msg.ptr, msg.len);
 }

@@ -26,6 +26,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe_mod.export_symbol_names = &.{
+        "run",
+    };
+
     // This creates another `std.Build.Step.Compile`, but this one builds an executable
     // rather than a static library.
     const exe = b.addExecutable(.{

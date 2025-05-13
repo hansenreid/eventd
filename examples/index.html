@@ -5,9 +5,42 @@
     <title>Simple template</title>
   </head>
   <body>
+    <div>Hello There</div>
    <script>
-    WebAssembly.instantiateStreaming(fetch("eventd.wasm"), {}).then(
-    );
+    const text_decoder = new TextDecoder();
+
+    let wasm = {
+        instance: undefined,
+
+        init: function (obj) {
+            this.instance = obj.instance;
+        },
+
+        getString: function (ptr, len) {
+            const memory = this.instance.exports.memory;
+            return text_decoder.decode(new Uint8Array(memory.buffer, ptr, len));
+        },
+
+        run: function() {
+          this.instance.exports.run();
+        },
+    };
+
+    const importObject = {
+      env: { jsLog: (ptr, len) =>  {
+        let msg = wasm.getString(ptr, len)
+        console.log(msg);
+      }},
+    };
+
+    WebAssembly.instantiateStreaming(
+      fetch("../zig-out/bin/eventd.wasm"), 
+      importObject
+    ).then((obj) => {
+        wasm.init(obj);
+        wasm.run();
+      });
+
    </script>
   </body>
 </html>
