@@ -2,6 +2,7 @@
 
 ## Feature Goals
 
+- Be compatible with postgres wire protocol
 - Event types are first class citizens that are defined up front with strong schemas
 - Event field data types should be as close to postgres types as possible
 - Events are submitted to a stream
@@ -120,3 +121,12 @@ TODO: Subscriptions
 - All IO must go through an interface (allows deterministic simulation testing and helps future proof against the coming changes to Zig async which will force this)
 - The underlying storage engine must be swappable. (I am sure it won't be right the first time)
 - Minimize resource usage. Goal is to be simple and small - think sqlite of event sourcing at least when running in edge mode
+
+## Tasks
+- [ ] Create postgres wire protocol implementation
+- [ ] Create websocket specification implementation
+- [ ] Create RESTlike endpoints 
+- [ ] Add create aggregate support (in memory)
+- [ ] Add create event support (in memory)
+- [ ] Add create stream support (in memory)
+
