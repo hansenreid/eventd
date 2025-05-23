@@ -35,13 +35,9 @@ export fn run() void {
     std.debug.print("{any}\n", .{startup.params.count()});
     io.log("Hello There");
 
-    const native = pg_wire.NativeInt(u16).init(0x1234);
-    const network = pg_wire.NetworkInt(u16).from_native(native);
-    std.debug.print("{x}\n", .{native.bytes()});
-    std.debug.print("{x}\n", .{network.bytes()});
-
-    const network2 = pg_wire.NetworkInt(u16).init(0x1234);
-    const native2 = pg_wire.NativeInt(u16).from_network(network2);
-    std.debug.print("{x}\n", .{native2.bytes()});
-    std.debug.print("{x}\n", .{network2.bytes()});
+    const bytes = [_]u8{ 0x12, 0x32, 0x32, 0x12 };
+    var deserializer = pg_wire.Deserializer.init(&bytes);
+    std.debug.print("{x}\n", .{deserializer.next_int(u16).int});
+    std.debug.print("{x}\n", .{deserializer.next_int(u8).int});
+    std.debug.print("{x}\n", .{deserializer.next_int(u8).int});
 }
