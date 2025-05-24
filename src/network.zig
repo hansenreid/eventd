@@ -26,10 +26,11 @@ pub const NonEmptyBytes = struct {
 
 pub const Deserializer = struct {
     bytes: NonEmptyBytes,
-    pos: u32 = 0,
+    pos: usize = 0,
 
     pub inline fn assert_invariants(self: Deserializer) void {
         assert(self.pos >= 0);
+        assert(self.pos < self.bytes.items.len);
         self.bytes.assert_invariants();
     }
 
@@ -55,6 +56,24 @@ pub const Deserializer = struct {
 
         self.pos += size;
         return int.to_native();
+    }
+
+    pub fn next_string(self: *Deserializer) ![]const u8 {
+        self.assert_invariants();
+
+        const bytes = self.bytes.items[self.pos..self.bytes.items.len];
+
+        const size = for (bytes, 0..) |char, idx| {
+            if (char == 0) {
+                break idx;
+            }
+        } else return error.SentinelNotFound;
+
+        const string = self.bytes.items[self.pos .. self.pos + size];
+
+        // Add 1 to move past the sentinel
+        self.pos = self.pos + size + 1;
+        return string;
     }
 };
 
@@ -125,4 +144,16 @@ test "can deserialize multiple ints" {
         result3,
         NetworkInt(u8).init(0x12).to_native(),
     ));
+}
+
+test "can deserialize multiple strings" {
+    const bytes = [_]u8{ 'h', 'e', 'l', 'l', 'o', 0, 'w', 'o', 'r', 'l', 'd', 0 };
+    const non_empty = NonEmptyBytes.init(&bytes);
+    var deserializer = Deserializer.init(non_empty);
+
+    const result1 = try deserializer.next_string();
+    const result2 = try deserializer.next_string();
+
+    try expect(std.mem.eql(u8, result1, "hello"));
+    try expect(std.mem.eql(u8, result2, "world"));
 }
