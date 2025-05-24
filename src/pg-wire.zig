@@ -24,17 +24,17 @@ pub const Startup = struct {
 
         var deserializer = network.Deserializer.init(data);
 
-        const len = deserializer.next_int(u32);
+        const len = try deserializer.next_int(u32);
         std.debug.print("len: {d}\n", .{len});
 
         if (len != data.items.len) {
             return error.InvalidStartupMessage;
         }
 
-        const major = deserializer.next_int(u16);
+        const major = try deserializer.next_int(u16);
         std.debug.print("major version: {d}\n", .{major});
 
-        const minor = deserializer.next_int(u16);
+        const minor = try deserializer.next_int(u16);
         std.debug.print("minor version: {d}\n", .{minor});
 
         if (major != 3 or minor != 0) {

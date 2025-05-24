@@ -36,10 +36,13 @@ pub const Deserializer = struct {
         };
     }
 
-    pub fn next_int(self: *Deserializer, T: type) T {
+    pub fn next_int(self: *Deserializer, T: type) !T {
         const size = @sizeOf(T);
-        //TODO: Return error instead of panicing
-        assert(self.pos + size <= self.bytes.items.len);
+
+        if (self.pos + size > self.bytes.items.len) {
+            return error.NotEnoughBytes;
+        }
+
         const bytes = self.bytes.items[self.pos .. self.pos + size];
 
         const int = NetworkInt(T).init(std.mem.readVarInt(T, bytes, .big));
@@ -98,9 +101,9 @@ test "can deserialize multiple ints" {
     const non_empty = NonEmptyBytes.init(&bytes);
     var deserializer = Deserializer.init(non_empty);
 
-    const result1 = deserializer.next_int(u16);
-    const result2 = deserializer.next_int(u8);
-    const result3 = deserializer.next_int(u8);
+    const result1 = try deserializer.next_int(u16);
+    const result2 = try deserializer.next_int(u8);
+    const result3 = try deserializer.next_int(u8);
 
     try expect(std.meta.eql(
         result1,
