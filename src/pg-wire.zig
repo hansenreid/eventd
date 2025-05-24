@@ -19,7 +19,7 @@ pub const NonEmptyBytes = struct {
         };
     }
 
-    pub fn assert_invariants(self: NonEmptyBytes) void {
+    pub inline fn assert_invariants(self: NonEmptyBytes) void {
         assert(self.items.len >= 1);
     }
 };
@@ -71,7 +71,7 @@ pub fn NetworkInt(comptime T: type) type {
             };
         }
 
-        pub fn from_native(native: NativeInt(T)) this {
+        pub inline fn from_native(native: NativeInt(T)) this {
             return init(std.mem.nativeToBig(T, native.int));
         }
     };
@@ -100,7 +100,7 @@ pub fn NativeInt(comptime T: type) type {
             };
         }
 
-        pub fn from_network(network: NetworkInt(T)) this {
+        pub inline fn from_network(network: NetworkInt(T)) this {
             return init(std.mem.bigToNative(T, network.int));
         }
     };
