@@ -5,8 +5,6 @@ const wasm_io = @import("io/wasm.zig");
 const pg_wire = @import("pg-wire.zig");
 const network = @import("network.zig");
 
-const native_endian = @import("builtin").target.cpu.arch.endian();
-
 pub fn main() !void {
     run();
 }
@@ -30,7 +28,7 @@ export fn run() void {
     const io = io_impl.io();
     io.log("Hello There");
 
-    const bytes = [_]u8{ 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00 };
+    const bytes = [_]u8{ 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00 };
     const non_empty = network.NonEmptyBytes.init(&bytes);
 
     pg_wire.Startup.deserialize(non_empty) catch |err| {

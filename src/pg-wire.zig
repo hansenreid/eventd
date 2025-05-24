@@ -15,7 +15,8 @@ pub const Message = union(enum) {
 
 pub const Startup = struct {
     len: u32,
-    version: u32,
+    major_version: u16,
+    minor_version: u16,
     params: std.StringHashMap([]const u8),
 
     pub fn deserialize(data: network.NonEmptyBytes) !void {
@@ -24,14 +25,17 @@ pub const Startup = struct {
         var deserializer = network.Deserializer.init(data);
 
         const len = deserializer.next_int(u32);
-        std.debug.print("len: {d}\n", .{len.int});
+        std.debug.print("len: {d}\n", .{len});
 
-        if (len.int != data.items.len) {
+        if (len != data.items.len) {
             return error.InvalidStartupMessage;
         }
 
-        const version = deserializer.next_int(u32);
-        std.debug.print("version: {d}\n", .{version.int});
+        const major = deserializer.next_int(u16);
+        std.debug.print("major version: {d}\n", .{major});
+
+        const minor = deserializer.next_int(u16);
+        std.debug.print("minor version: {d}\n", .{minor});
     }
 };
 
