@@ -30,7 +30,7 @@ pub const Deserializer = struct {
 
     pub inline fn assert_invariants(self: Deserializer) void {
         assert(self.pos >= 0);
-        assert(self.pos < self.bytes.items.len);
+        assert(self.pos <= self.bytes.items.len);
         self.bytes.assert_invariants();
     }
 
@@ -60,6 +60,10 @@ pub const Deserializer = struct {
 
     pub fn next_string(self: *Deserializer) ![]const u8 {
         self.assert_invariants();
+
+        if (self.pos == self.bytes.items.len) {
+            return error.EndOfBytes;
+        }
 
         const bytes = self.bytes.items[self.pos..self.bytes.items.len];
 
@@ -129,6 +133,7 @@ test "can deserialize multiple ints" {
     const result1 = try deserializer.next_int(u16);
     const result2 = try deserializer.next_int(u8);
     const result3 = try deserializer.next_int(u8);
+    const result4 = deserializer.next_int(u8);
 
     try expect(std.meta.eql(
         result1,
@@ -144,6 +149,8 @@ test "can deserialize multiple ints" {
         result3,
         NetworkInt(u8).init(0x12).to_native(),
     ));
+
+    try expect(std.meta.eql(result4, error.NotEnoughBytes));
 }
 
 test "can deserialize multiple strings" {
@@ -153,7 +160,9 @@ test "can deserialize multiple strings" {
 
     const result1 = try deserializer.next_string();
     const result2 = try deserializer.next_string();
+    const result3 = deserializer.next_string();
 
     try expect(std.mem.eql(u8, result1, "hello"));
     try expect(std.mem.eql(u8, result2, "world"));
+    try expect(std.meta.eql(result3, error.EndOfBytes));
 }
