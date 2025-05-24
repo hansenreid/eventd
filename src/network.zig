@@ -94,10 +94,6 @@ pub fn NetworkInt(comptime T: type) type {
             assert(@sizeOf(this) == @sizeOf(T));
         }
 
-        pub fn bytes(self: this) T {
-            return self.int;
-        }
-
         pub fn init(int: T) this {
             return .{
                 .int = int,
