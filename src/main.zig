@@ -28,7 +28,26 @@ export fn run() void {
     const io = io_impl.io();
     io.log("Hello There");
 
-    const bytes = [_]u8{ 0x08, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00 };
+    const bytes = [_]u8{
+        0x11,
+        0x00,
+        0x00,
+        0x00,
+        0x03,
+        0x00,
+        0x00,
+        0x00,
+        'u',
+        's',
+        'e',
+        'r',
+        0x00,
+        'b',
+        'o',
+        'b',
+        0x00,
+    };
+
     const non_empty = network.NonEmptyBytes.init(&bytes);
 
     pg_wire.Startup.deserialize(non_empty) catch |err| {

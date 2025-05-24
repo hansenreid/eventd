@@ -40,6 +40,26 @@ pub const Startup = struct {
         if (major != 3 or minor != 0) {
             return error.UnsupportedVersion;
         }
+
+        var max_params: usize = 20;
+        blk: while (true and max_params > 0) {
+            max_params -= 1;
+            const key = deserializer.next_string() catch |err| {
+                switch (err) {
+                    error.EndOfBytes => {
+                        break :blk;
+                    },
+                    else => return error.InvalidStartParams,
+                }
+            };
+
+            const val = deserializer.next_string() catch |err| {
+                std.debug.print("err2: {any}\n", .{err});
+                return error.InvalidStartParams;
+            };
+
+            std.debug.print("{s}:{s}\n", .{ key, val });
+        }
     }
 };
 
