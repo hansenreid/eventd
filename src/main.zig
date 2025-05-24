@@ -12,12 +12,12 @@ pub fn main() !void {
 }
 
 export fn run() void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // const allocator = gpa.allocator();
 
-    var params = std.StringHashMap([]const u8).init(allocator);
-    defer params.deinit();
-    _ = params.put("Hello", "World") catch unreachable;
+    // var params = std.StringHashMap([]const u8).init(allocator);
+    // defer params.deinit();
+    // _ = params.put("Hello", "World") catch unreachable;
 
     var io_impl = comptime blk: {
         switch (builtin.os.tag) {
@@ -29,4 +29,12 @@ export fn run() void {
 
     const io = io_impl.io();
     io.log("Hello There");
+
+    const bytes = [_]u8{ 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00 };
+    const non_empty = network.NonEmptyBytes.init(&bytes);
+
+    pg_wire.Startup.deserialize(non_empty) catch |err| {
+        std.debug.print("err: {any}\n", .{err});
+        io.log("Failed to parse startup message");
+    };
 }

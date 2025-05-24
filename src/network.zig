@@ -38,6 +38,7 @@ pub const Deserializer = struct {
 
     pub fn next_int(self: *Deserializer, T: type) NativeInt(T) {
         const size = @sizeOf(T);
+        //TODO: Return error instead of panicing
         assert(self.pos + size <= self.bytes.items.len);
         const bytes = self.bytes.items[self.pos .. self.pos + size];
 
