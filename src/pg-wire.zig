@@ -4,12 +4,32 @@ const assert = std.debug.assert;
 
 pub const PGWire = @This();
 
+pub const NonEmptyBytes = struct {
+    items: []const u8,
+
+    comptime {
+        assert(@sizeOf(NonEmptyBytes) == @sizeOf([]const u8));
+    }
+
+    pub fn init(bytes: []const u8) NonEmptyBytes {
+        assert(bytes.len >= 1);
+
+        return .{
+            .items = bytes,
+        };
+    }
+
+    pub fn assert_invariants(self: NonEmptyBytes) void {
+        assert(self.items.len >= 1);
+    }
+};
+
 pub const Deserializer = struct {
-    bytes: []const u8,
+    bytes: NonEmptyBytes,
     pos: u32 = 0,
 
-    pub fn init(bytes: []const u8) Deserializer {
-        assert(bytes.len >= 1);
+    pub fn init(bytes: NonEmptyBytes) Deserializer {
+        bytes.assert_invariants();
 
         return .{
             .bytes = bytes,
@@ -18,8 +38,8 @@ pub const Deserializer = struct {
 
     pub fn next_int(self: *Deserializer, T: type) NativeInt(T) {
         const size = @sizeOf(T);
-        assert(self.pos + size <= self.bytes.len);
-        const bytes = self.bytes[self.pos .. self.pos + size];
+        assert(self.pos + size <= self.bytes.items.len);
+        const bytes = self.bytes.items[self.pos .. self.pos + size];
 
         const int = NetworkInt(T).init(std.mem.readVarInt(T, bytes, .big));
 
