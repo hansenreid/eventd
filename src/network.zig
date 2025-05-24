@@ -111,7 +111,10 @@ test "can transform native int to network int and back" {
     const network = NetworkInt(u16).from_native(native);
 
     const result = NativeInt(u16).from_network(network);
-    try expect(std.meta.eql(native, result));
+    try expect(std.meta.eql(
+        native,
+        result,
+    ));
 }
 
 test "can transform netowrk int to native int and back" {
@@ -119,5 +122,39 @@ test "can transform netowrk int to native int and back" {
     const native = NativeInt(u16).from_network(network);
 
     const result = NetworkInt(u16).from_native(native);
-    try expect(std.meta.eql(network, result));
+    try expect(std.meta.eql(
+        network,
+        result,
+    ));
+}
+
+test "can deserialize multiple ints" {
+    const bytes = [_]u8{ 0x12, 0x34, 0x34, 0x12 };
+    const non_empty = NonEmptyBytes.init(&bytes);
+    var deserializer = Deserializer.init(non_empty);
+
+    const result1 = deserializer.next_int(u16);
+    const result2 = deserializer.next_int(u8);
+    const result3 = deserializer.next_int(u8);
+
+    try expect(std.meta.eql(
+        result1,
+        NativeInt(u16).from_network(
+            NetworkInt(u16).init(0x1234),
+        ),
+    ));
+
+    try expect(std.meta.eql(
+        result2,
+        NativeInt(u8).from_network(
+            NetworkInt(u8).init(0x34),
+        ),
+    ));
+
+    try expect(std.meta.eql(
+        result3,
+        NativeInt(u16).from_network(
+            NetworkInt(u8).init(0x12),
+        ),
+    ));
 }

@@ -19,11 +19,6 @@ export fn run() void {
     defer params.deinit();
     _ = params.put("Hello", "World") catch unreachable;
 
-    const startup = pg_wire.Startup{
-        .version = 0,
-        .params = params,
-    };
-
     var io_impl = comptime blk: {
         switch (builtin.os.tag) {
             .linux, .wasi => break :blk linux_io{},
@@ -33,13 +28,5 @@ export fn run() void {
     };
 
     const io = io_impl.io();
-    std.debug.print("{any}\n", .{startup.params.count()});
     io.log("Hello There");
-
-    const bytes = [_]u8{ 0x12, 0x32, 0x32, 0x12 };
-    const non_empty = network.NonEmptyBytes.init(&bytes);
-    var deserializer = network.Deserializer.init(non_empty);
-    std.debug.print("{x}\n", .{deserializer.next_int(u16).int});
-    std.debug.print("{x}\n", .{deserializer.next_int(u8).int});
-    std.debug.print("{x}\n", .{deserializer.next_int(u8).int});
 }
