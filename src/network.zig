@@ -11,6 +11,10 @@ pub const NonEmptyBytes = struct {
         assert(@sizeOf(NonEmptyBytes) == @sizeOf([]const u8));
     }
 
+    pub inline fn assert_invariants(self: NonEmptyBytes) void {
+        assert(self.items.len >= 1);
+    }
+
     pub fn init(bytes: []const u8) NonEmptyBytes {
         assert(bytes.len >= 1);
 
@@ -18,15 +22,16 @@ pub const NonEmptyBytes = struct {
             .items = bytes,
         };
     }
-
-    pub inline fn assert_invariants(self: NonEmptyBytes) void {
-        assert(self.items.len >= 1);
-    }
 };
 
 pub const Deserializer = struct {
     bytes: NonEmptyBytes,
     pos: u32 = 0,
+
+    pub inline fn assert_invariants(self: Deserializer) void {
+        assert(self.pos >= 0);
+        self.bytes.assert_invariants();
+    }
 
     pub fn init(bytes: NonEmptyBytes) Deserializer {
         bytes.assert_invariants();
@@ -37,8 +42,9 @@ pub const Deserializer = struct {
     }
 
     pub fn next_int(self: *Deserializer, T: type) !T {
-        const size = @sizeOf(T);
+        self.assert_invariants();
 
+        const size = @sizeOf(T);
         if (self.pos + size > self.bytes.items.len) {
             return error.NotEnoughBytes;
         }
