@@ -26,7 +26,6 @@ export fn run() void {
     };
 
     const io = io_impl.io();
-    io.log("Hello There");
 
     const bytes = [_]u8{
         0x11,
