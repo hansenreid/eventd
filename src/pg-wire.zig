@@ -36,6 +36,10 @@ pub const Startup = struct {
 
         const minor = deserializer.next_int(u16);
         std.debug.print("minor version: {d}\n", .{minor});
+
+        if (major != 3 or minor != 0) {
+            return error.UnsupportedVersion;
+        }
     }
 };
 
