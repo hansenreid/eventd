@@ -29,9 +29,9 @@ pub const Deserializer = struct {
     pos: usize = 0,
 
     pub inline fn assert_invariants(self: Deserializer) void {
+        self.bytes.assert_invariants();
         assert(self.pos >= 0);
         assert(self.pos <= self.bytes.items.len);
-        self.bytes.assert_invariants();
     }
 
     pub fn init(bytes: NonEmptyBytes) Deserializer {
