@@ -10,12 +10,8 @@ pub fn main() !void {
 }
 
 export fn run() void {
-    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    // const allocator = gpa.allocator();
-
-    // var params = std.StringHashMap([]const u8).init(allocator);
-    // defer params.deinit();
-    // _ = params.put("Hello", "World") catch unreachable;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
 
     var io_impl = comptime blk: {
         switch (builtin.os.tag) {
@@ -49,8 +45,14 @@ export fn run() void {
 
     const non_empty = network.NonEmptyBytes.init(&bytes);
 
-    pg_wire.Startup.deserialize(non_empty) catch |err| {
+    const startup = pg_wire.Startup.deserialize(allocator, non_empty) catch |err| {
         std.debug.print("err: {any}\n", .{err});
-        io.log("Failed to parse startup message");
+        io.log("Failed to parse startup message\n");
+        return;
     };
+
+    std.debug.print("major version: {d}\n", .{startup.major_version});
+    std.debug.print("minor version: {d}\n", .{startup.minor_version});
+    std.debug.print("user: {?s}\n", .{startup.params.get("user")});
+    std.debug.print("database: {?s}\n", .{startup.params.get("database")});
 }
