@@ -11,16 +11,19 @@ pub const NonEmptyBytes = struct {
         assert(@sizeOf(NonEmptyBytes) == @sizeOf([]const u8));
     }
 
-    pub inline fn assert_invariants(self: NonEmptyBytes) void {
+    pub inline fn assert_invariants(self: *const NonEmptyBytes) void {
         assert(self.items.len >= 1);
     }
 
     pub fn init(bytes: []const u8) NonEmptyBytes {
         assert(bytes.len >= 1);
 
-        return .{
+        const non_empty_bytes = NonEmptyBytes{
             .items = bytes,
         };
+
+        non_empty_bytes.assert_invariants();
+        return non_empty_bytes;
     }
 };
 
@@ -28,7 +31,7 @@ pub const Deserializer = struct {
     bytes: NonEmptyBytes,
     pos: usize = 0,
 
-    pub inline fn assert_invariants(self: Deserializer) void {
+    pub inline fn assert_invariants(self: *const Deserializer) void {
         self.bytes.assert_invariants();
         assert(self.pos >= 0);
         assert(self.pos <= self.bytes.items.len);
@@ -37,9 +40,12 @@ pub const Deserializer = struct {
     pub fn init(bytes: NonEmptyBytes) Deserializer {
         bytes.assert_invariants();
 
-        return .{
+        const deserializer = Deserializer{
             .bytes = bytes,
         };
+
+        deserializer.assert_invariants();
+        return deserializer;
     }
 
     pub fn next_int(self: *Deserializer, T: type) !T {
@@ -55,6 +61,8 @@ pub const Deserializer = struct {
         const int = NetworkInt(T).init(std.mem.readVarInt(T, bytes, .big));
 
         self.pos += size;
+
+        self.assert_invariants();
         return int.to_native();
     }
 
@@ -77,6 +85,8 @@ pub const Deserializer = struct {
 
         // Add 1 to move past the sentinel
         self.pos = self.pos + size + 1;
+
+        self.assert_invariants();
         return string;
     }
 };

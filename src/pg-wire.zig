@@ -16,6 +16,33 @@ pub const Startup = struct {
     minor_version: u16,
     params: std.StringHashMap([]const u8),
 
+    pub inline fn assert_invariants(self: *const Startup) void {
+        assert(self.len >= 8);
+        assert(self.major_version == 3);
+        assert(self.minor_version == 0);
+        assert(self.params.contains("user"));
+    }
+
+    pub fn init(len: u32, major: u16, minor: u16, params: std.StringHashMap([]const u8)) !Startup {
+        if (major != 3 or minor != 0) {
+            return error.UnsupportedVersion;
+        }
+
+        if (!params.contains("user")) {
+            return error.MissingUserParam;
+        }
+
+        const startup = Startup{
+            .len = len,
+            .major_version = major,
+            .minor_version = minor,
+            .params = params,
+        };
+
+        startup.assert_invariants();
+        return startup;
+    }
+
     pub fn deserialize(allocator: Allocator, data: network.NonEmptyBytes) !Startup {
         data.assert_invariants();
 
@@ -28,9 +55,6 @@ pub const Startup = struct {
 
         const major = try deserializer.next_int(u16);
         const minor = try deserializer.next_int(u16);
-        if (major != 3 or minor != 0) {
-            return error.UnsupportedVersion;
-        }
 
         var params = std.StringHashMap([]const u8).init(allocator);
         var max_params: usize = 20;
@@ -53,16 +77,10 @@ pub const Startup = struct {
             try params.put(key, val);
         }
 
-        if (!params.contains("user")) {
-            return error.MissingUserParam;
-        }
+        const startup = try Startup.init(len, major, minor, params);
+        startup.assert_invariants();
 
-        return .{
-            .len = len,
-            .major_version = major,
-            .minor_version = minor,
-            .params = params,
-        };
+        return startup;
     }
 };
 
