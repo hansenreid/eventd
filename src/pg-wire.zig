@@ -11,19 +11,17 @@ pub const Message = union(enum) {
 };
 
 pub const Startup = struct {
-    len: u32,
     major_version: u16,
     minor_version: u16,
     params: std.StringHashMap([]const u8),
 
     pub inline fn assert_invariants(self: *const Startup) void {
-        assert(self.len >= 8);
         assert(self.major_version == 3);
         assert(self.minor_version == 0);
         assert(self.params.contains("user"));
     }
 
-    pub fn init(len: u32, major: u16, minor: u16, params: std.StringHashMap([]const u8)) !Startup {
+    pub fn init(major: u16, minor: u16, params: std.StringHashMap([]const u8)) !Startup {
         if (major != 3 or minor != 0) {
             return error.UnsupportedVersion;
         }
@@ -33,7 +31,6 @@ pub const Startup = struct {
         }
 
         const startup = Startup{
-            .len = len,
             .major_version = major,
             .minor_version = minor,
             .params = params,
@@ -77,7 +74,7 @@ pub const Startup = struct {
             try params.put(key, val);
         }
 
-        const startup = try Startup.init(len, major, minor, params);
+        const startup = try Startup.init(major, minor, params);
         startup.assert_invariants();
 
         return startup;
