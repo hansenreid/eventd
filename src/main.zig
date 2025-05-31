@@ -55,4 +55,23 @@ export fn run() void {
     std.debug.print("minor version: {d}\n", .{startup.minor_version});
     std.debug.print("user: {?s}\n", .{startup.params.get("user")});
     std.debug.print("database: {?s}\n", .{startup.params.get("database")});
+
+    var write_buffer: [256]u8 = undefined;
+    var serializer = network.Serializer.init(&write_buffer);
+
+    const value: u16 = 0x1234;
+    std.debug.print("Starting: 0x{x}\n", .{value});
+
+    serializer.next_int(u16, value) catch |err| {
+        std.debug.print("Error serializing: {any}\n", .{err});
+    };
+
+    const non_empty2 = network.NonEmptyBytes.init(&write_buffer);
+    var deserializer = network.Deserializer.init(non_empty2);
+    const result = deserializer.next_int(u16) catch |err| {
+        std.debug.print("Error deserializing : {any}\n", .{err});
+        return;
+    };
+
+    std.debug.print("Result: 0x{x}\n", .{result});
 }

@@ -91,6 +91,66 @@ pub const Deserializer = struct {
     }
 };
 
+pub const Serializer = struct {
+    buffer: std.io.FixedBufferStream([]u8),
+
+    pub inline fn assert_invariants(self: *const Serializer) void {
+        _ = self;
+    }
+
+    pub fn init(bytes: []u8) Serializer {
+        const buffer = std.io.fixedBufferStream(bytes);
+
+        const serializer = Serializer{
+            .buffer = buffer,
+        };
+
+        serializer.assert_invariants();
+        return serializer;
+    }
+
+    pub fn next_int(self: *Serializer, T: type, int: T) !void {
+        self.assert_invariants();
+
+        const networkInt = NetworkInt(T).from_native(int);
+
+        var buffer: [@sizeOf(T)]u8 = undefined;
+
+        std.mem.writePackedInt(T, &buffer, 0, networkInt.int, .big);
+
+        const written = try self.buffer.write(&buffer);
+        if (written != @sizeOf(T)) {
+            return error.NotEnoughBytes;
+        }
+
+        self.assert_invariants();
+    }
+
+    pub fn next_string(self: *Deserializer) ![]const u8 {
+        self.assert_invariants();
+
+        if (self.pos == self.bytes.items.len) {
+            return error.EndOfBytes;
+        }
+
+        const bytes = self.bytes.items[self.pos..self.bytes.items.len];
+
+        const size = for (bytes, 0..) |char, idx| {
+            if (char == 0) {
+                break idx;
+            }
+        } else return error.SentinelNotFound;
+
+        const string = self.bytes.items[self.pos .. self.pos + size];
+
+        // Add 1 to move past the sentinel
+        self.pos = self.pos + size + 1;
+
+        self.assert_invariants();
+        return string;
+    }
+};
+
 pub fn NetworkInt(comptime T: type) type {
     if (@typeInfo(T) != .int) {
         @compileError("only ints accepted");
