@@ -5,17 +5,15 @@ const assert = std.debug.assert;
 pub const Network = @This();
 
 pub const NonEmptyBytes = struct {
-    items: []const u8,
-
-    comptime {
-        assert(@sizeOf(NonEmptyBytes) == @sizeOf([]const u8));
-    }
+    items: []u8,
+    corrupt: bool = false,
 
     pub inline fn assert_invariants(self: *const NonEmptyBytes) void {
+        assert(!self.corrupt);
         assert(self.items.len >= 1);
     }
 
-    pub fn init(bytes: []const u8) NonEmptyBytes {
+    pub fn init(bytes: []u8) NonEmptyBytes {
         assert(bytes.len >= 1);
 
         const non_empty_bytes = NonEmptyBytes{
@@ -25,10 +23,14 @@ pub const NonEmptyBytes = struct {
         non_empty_bytes.assert_invariants();
         return non_empty_bytes;
     }
+
+    pub fn set_corrupt(self: *NonEmptyBytes) void {
+        self.corrupt = true;
+    }
 };
 
 pub const Deserializer = struct {
-    bytes: NonEmptyBytes,
+    bytes: *NonEmptyBytes,
     pos: usize = 0,
 
     pub inline fn assert_invariants(self: *const Deserializer) void {
@@ -37,7 +39,7 @@ pub const Deserializer = struct {
         assert(self.pos <= self.bytes.items.len);
     }
 
-    pub fn init(bytes: NonEmptyBytes) Deserializer {
+    pub fn init(bytes: *NonEmptyBytes) Deserializer {
         bytes.assert_invariants();
 
         const deserializer = Deserializer{
@@ -93,16 +95,18 @@ pub const Deserializer = struct {
 
 pub const Serializer = struct {
     buffer: std.io.FixedBufferStream([]u8),
+    bytes: *NonEmptyBytes,
 
     pub inline fn assert_invariants(self: *const Serializer) void {
-        _ = self;
+        self.bytes.assert_invariants();
     }
 
-    pub fn init(bytes: []u8) Serializer {
-        const buffer = std.io.fixedBufferStream(bytes);
+    pub fn init(bytes: *NonEmptyBytes) Serializer {
+        const buffer = std.io.fixedBufferStream(bytes.items);
 
         const serializer = Serializer{
             .buffer = buffer,
+            .bytes = bytes,
         };
 
         serializer.assert_invariants();
@@ -120,8 +124,7 @@ pub const Serializer = struct {
 
         const written = try self.buffer.write(&buffer);
         if (written != @sizeOf(T)) {
-            // TODO: track underlying buffer as NonEmptyBytes and add flag to represent
-            // being unsafe to read from in this scenario
+            self.bytes.set_corrupt();
             return error.NotEnoughBytes;
         }
 
@@ -195,7 +198,9 @@ test "can transform netowrk int to native int and back" {
 
 test "can serialize and deserialize multiple ints" {
     var buffer = [_]u8{0} ** 4;
-    var serializer = Serializer.init(&buffer);
+    var non_empty = NonEmptyBytes.init(&buffer);
+
+    var serializer = Serializer.init(&non_empty);
     try serializer.write_int(u16, 0x1234);
     try serializer.write_int(u8, 0x34);
     try serializer.write_int(u8, 0x12);
@@ -203,8 +208,7 @@ test "can serialize and deserialize multiple ints" {
     const no_space_left = serializer.write_int(u8, 0x00);
     try expect(std.meta.eql(no_space_left, error.NoSpaceLeft));
 
-    const non_empty = NonEmptyBytes.init(&buffer);
-    var deserializer = Deserializer.init(non_empty);
+    var deserializer = Deserializer.init(&non_empty);
 
     const result1 = try deserializer.next_int(u16);
     const result2 = try deserializer.next_int(u8);
@@ -229,10 +233,20 @@ test "can serialize and deserialize multiple ints" {
     try expect(std.meta.eql(result4, error.NotEnoughBytes));
 }
 
+test "mark bytes as corrupt when write partially succeeds" {
+    var buffer = [_]u8{0} ** 1;
+    var non_empty = NonEmptyBytes.init(&buffer);
+    var serializer = Serializer.init(&non_empty);
+
+    const fail = serializer.write_int(u16, 0x1234);
+    try expect(std.meta.eql(fail, error.NotEnoughBytes));
+    try expect(non_empty.corrupt);
+}
+
 test "can deserialize multiple strings" {
-    const bytes = [_]u8{ 'h', 'e', 'l', 'l', 'o', 0, 'w', 'o', 'r', 'l', 'd', 0 };
-    const non_empty = NonEmptyBytes.init(&bytes);
-    var deserializer = Deserializer.init(non_empty);
+    var bytes = [_]u8{ 'h', 'e', 'l', 'l', 'o', 0, 'w', 'o', 'r', 'l', 'd', 0 };
+    var non_empty = NonEmptyBytes.init(&bytes);
+    var deserializer = Deserializer.init(&non_empty);
 
     const result1 = try deserializer.next_string();
     const result2 = try deserializer.next_string();

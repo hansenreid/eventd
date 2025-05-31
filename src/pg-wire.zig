@@ -36,7 +36,7 @@ pub const Startup = struct {
         return startup;
     }
 
-    pub fn deserialize(allocator: Allocator, data: network.NonEmptyBytes) !Startup {
+    pub fn deserialize(allocator: Allocator, data: *network.NonEmptyBytes) !Startup {
         data.assert_invariants();
 
         var deserializer = network.Deserializer.init(data);

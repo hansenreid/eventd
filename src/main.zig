@@ -23,7 +23,7 @@ export fn run() void {
 
     const io = io_impl.io();
 
-    const bytes = [_]u8{
+    var bytes = [_]u8{
         0x11,
         0x00,
         0x00,
@@ -43,9 +43,9 @@ export fn run() void {
         0x00,
     };
 
-    const non_empty = network.NonEmptyBytes.init(&bytes);
+    var non_empty = network.NonEmptyBytes.init(&bytes);
 
-    const startup = pg_wire.Startup.deserialize(allocator, non_empty) catch |err| {
+    const startup = pg_wire.Startup.deserialize(allocator, &non_empty) catch |err| {
         std.debug.print("err: {any}\n", .{err});
         io.log("Failed to parse startup message\n");
         return;
@@ -57,7 +57,8 @@ export fn run() void {
     std.debug.print("database: {?s}\n", .{startup.params.get("database")});
 
     var write_buffer: [256]u8 = undefined;
-    var serializer = network.Serializer.init(&write_buffer);
+    var non_empty2 = network.NonEmptyBytes.init(&write_buffer);
+    var serializer = network.Serializer.init(&non_empty2);
 
     const value: u16 = 0x1234;
     std.debug.print("Starting: 0x{x}\n", .{value});
@@ -66,8 +67,7 @@ export fn run() void {
         std.debug.print("Error serializing: {any}\n", .{err});
     };
 
-    const non_empty2 = network.NonEmptyBytes.init(&write_buffer);
-    var deserializer = network.Deserializer.init(non_empty2);
+    var deserializer = network.Deserializer.init(&non_empty2);
     const result = deserializer.next_int(u16) catch |err| {
         std.debug.print("Error deserializing : {any}\n", .{err});
         return;
