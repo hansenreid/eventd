@@ -6,10 +6,6 @@ const Allocator = std.mem.Allocator;
 
 pub const PGWire = @This();
 
-pub const Message = union(enum) {
-    authentication: Authentication,
-};
-
 pub const Startup = struct {
     major_version: u16,
     minor_version: u16,
@@ -79,17 +75,4 @@ pub const Startup = struct {
 
         return startup;
     }
-};
-
-pub const Authentication = struct {
-    type: u8,
-    length: u32,
-    response: u32,
-    data: ?[]u8 = null,
-};
-
-pub const AuthenticationOk: Authentication = .{
-    .type = 'R',
-    .length = 8,
-    .response = 1,
 };
