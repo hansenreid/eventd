@@ -109,7 +109,7 @@ pub const Serializer = struct {
         return serializer;
     }
 
-    pub fn next_int(self: *Serializer, T: type, int: T) !void {
+    pub fn write_int(self: *Serializer, T: type, int: T) !void {
         self.assert_invariants();
 
         const networkInt = NetworkInt(T).from_native(int);
@@ -120,6 +120,8 @@ pub const Serializer = struct {
 
         const written = try self.buffer.write(&buffer);
         if (written != @sizeOf(T)) {
+            // TODO: track underlying buffer as NonEmptyBytes and add flag to represent
+            // being unsafe to read from in this scenario
             return error.NotEnoughBytes;
         }
 
@@ -191,9 +193,17 @@ test "can transform netowrk int to native int and back" {
     ));
 }
 
-test "can deserialize multiple ints" {
-    const bytes = [_]u8{ 0x12, 0x34, 0x34, 0x12 };
-    const non_empty = NonEmptyBytes.init(&bytes);
+test "can serialize and deserialize multiple ints" {
+    var buffer = [_]u8{0} ** 4;
+    var serializer = Serializer.init(&buffer);
+    try serializer.write_int(u16, 0x1234);
+    try serializer.write_int(u8, 0x34);
+    try serializer.write_int(u8, 0x12);
+
+    const no_space_left = serializer.write_int(u8, 0x00);
+    try expect(std.meta.eql(no_space_left, error.NoSpaceLeft));
+
+    const non_empty = NonEmptyBytes.init(&buffer);
     var deserializer = Deserializer.init(non_empty);
 
     const result1 = try deserializer.next_int(u16);
@@ -203,17 +213,17 @@ test "can deserialize multiple ints" {
 
     try expect(std.meta.eql(
         result1,
-        NetworkInt(u16).init(0x1234).to_native(),
+        0x1234,
     ));
 
     try expect(std.meta.eql(
         result2,
-        NetworkInt(u8).init(0x34).to_native(),
+        0x34,
     ));
 
     try expect(std.meta.eql(
         result3,
-        NetworkInt(u8).init(0x12).to_native(),
+        0x12,
     ));
 
     try expect(std.meta.eql(result4, error.NotEnoughBytes));

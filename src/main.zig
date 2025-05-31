@@ -62,7 +62,7 @@ export fn run() void {
     const value: u16 = 0x1234;
     std.debug.print("Starting: 0x{x}\n", .{value});
 
-    serializer.next_int(u16, value) catch |err| {
+    serializer.write_int(u16, value) catch |err| {
         std.debug.print("Error serializing: {any}\n", .{err});
     };
 
