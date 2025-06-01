@@ -131,28 +131,22 @@ pub const Serializer = struct {
         self.assert_invariants();
     }
 
-    pub fn next_string(self: *Deserializer) ![]const u8 {
+    pub fn write_string(self: *Serializer, bytes: []const u8) !void {
         self.assert_invariants();
 
-        if (self.pos == self.bytes.items.len) {
-            return error.EndOfBytes;
+        const written = try self.buffer.write(bytes);
+        if (written != bytes.len) {
+            self.bytes.set_corrupt();
+            return error.NotEnoughBytes;
         }
 
-        const bytes = self.bytes.items[self.pos..self.bytes.items.len];
-
-        const size = for (bytes, 0..) |char, idx| {
-            if (char == 0) {
-                break idx;
-            }
-        } else return error.SentinelNotFound;
-
-        const string = self.bytes.items[self.pos .. self.pos + size];
-
-        // Add 1 to move past the sentinel
-        self.pos = self.pos + size + 1;
+        const zero_byte_written = try self.buffer.write(&[_]u8{0x00});
+        if (zero_byte_written != 1) {
+            self.bytes.set_corrupt();
+            return error.NotEnoughBytes;
+        }
 
         self.assert_invariants();
-        return string;
     }
 };
 
@@ -233,7 +227,7 @@ test "can serialize and deserialize multiple ints" {
     try expect(std.meta.eql(result4, error.NotEnoughBytes));
 }
 
-test "mark bytes as corrupt when write partially succeeds" {
+test "mark bytes as corrupt when int write partially succeeds" {
     var buffer = [_]u8{0} ** 1;
     var non_empty = NonEmptyBytes.init(&buffer);
     var serializer = Serializer.init(&non_empty);
@@ -243,16 +237,38 @@ test "mark bytes as corrupt when write partially succeeds" {
     try expect(non_empty.corrupt);
 }
 
-test "can deserialize multiple strings" {
-    var bytes = [_]u8{ 'h', 'e', 'l', 'l', 'o', 0, 'w', 'o', 'r', 'l', 'd', 0 };
-    var non_empty = NonEmptyBytes.init(&bytes);
+test "can serialize and deserialize multiple strings" {
+    var buffer = [_]u8{0} ** 12;
+    var non_empty = NonEmptyBytes.init(&buffer);
+
+    const hello = "hello";
+    const world = "world";
+    const fail = "fail";
+
+    var serializer = Serializer.init(&non_empty);
+    try serializer.write_string(hello);
+    try serializer.write_string(world);
+
+    const no_space_left = serializer.write_string(fail);
+    try expect(std.meta.eql(no_space_left, error.NoSpaceLeft));
+
     var deserializer = Deserializer.init(&non_empty);
 
     const result1 = try deserializer.next_string();
     const result2 = try deserializer.next_string();
     const result3 = deserializer.next_string();
 
-    try expect(std.mem.eql(u8, result1, "hello"));
-    try expect(std.mem.eql(u8, result2, "world"));
+    try expect(std.mem.eql(u8, result1, hello));
+    try expect(std.mem.eql(u8, result2, world));
     try expect(std.meta.eql(result3, error.EndOfBytes));
+}
+
+test "mark bytes as corrupt when string write partially succeeds" {
+    var buffer = [_]u8{0} ** 1;
+    var non_empty = NonEmptyBytes.init(&buffer);
+    var serializer = Serializer.init(&non_empty);
+
+    const fail = serializer.write_string("fail");
+    try expect(std.meta.eql(fail, error.NotEnoughBytes));
+    try expect(non_empty.corrupt);
 }
