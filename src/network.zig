@@ -119,7 +119,6 @@ pub const Serializer = struct {
         const networkInt = NetworkInt(T).from_native(int);
 
         var buffer: [@sizeOf(T)]u8 = undefined;
-
         std.mem.writePackedInt(T, &buffer, 0, networkInt.int, .big);
 
         const written = try self.buffer.write(&buffer);
@@ -191,7 +190,7 @@ test "can transform netowrk int to native int and back" {
 }
 
 test "can serialize and deserialize multiple ints" {
-    var buffer = [_]u8{0} ** 4;
+    var buffer: [4]u8 = undefined;
     var non_empty = NonEmptyBytes.init(&buffer);
 
     var serializer = Serializer.init(&non_empty);
@@ -228,7 +227,7 @@ test "can serialize and deserialize multiple ints" {
 }
 
 test "mark bytes as corrupt when int write partially succeeds" {
-    var buffer = [_]u8{0} ** 1;
+    var buffer: [1]u8 = undefined;
     var non_empty = NonEmptyBytes.init(&buffer);
     var serializer = Serializer.init(&non_empty);
 
@@ -238,7 +237,7 @@ test "mark bytes as corrupt when int write partially succeeds" {
 }
 
 test "can serialize and deserialize multiple strings" {
-    var buffer = [_]u8{0} ** 12;
+    var buffer: [12]u8 = undefined;
     var non_empty = NonEmptyBytes.init(&buffer);
 
     const hello = "hello";
@@ -264,7 +263,7 @@ test "can serialize and deserialize multiple strings" {
 }
 
 test "mark bytes as corrupt when string write partially succeeds" {
-    var buffer = [_]u8{0} ** 1;
+    var buffer: [1]u8 = undefined;
     var non_empty = NonEmptyBytes.init(&buffer);
     var serializer = Serializer.init(&non_empty);
 
