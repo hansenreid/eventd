@@ -44,8 +44,9 @@ export fn run() void {
     };
 
     var non_empty = network.NonEmptyBytes.init(&bytes);
+    var d = network.Deserializer.init(&non_empty);
 
-    const startup = pg_wire.Startup.deserialize(allocator, &non_empty) catch |err| {
+    const startup = pg_wire.Startup.deserialize(allocator, &d) catch |err| {
         std.debug.print("err: {any}\n", .{err});
         io.log("Failed to parse startup message\n");
         return;
@@ -53,8 +54,8 @@ export fn run() void {
 
     std.debug.print("major version: {d}\n", .{startup.major_version});
     std.debug.print("minor version: {d}\n", .{startup.minor_version});
-    std.debug.print("user: {?s}\n", .{startup.params.get("user")});
-    std.debug.print("database: {?s}\n", .{startup.params.get("database")});
+    std.debug.print("user: {?s}\n", .{startup.params.map.get("user")});
+    std.debug.print("database: {?s}\n", .{startup.params.map.get("database")});
 
     var write_buffer: [256]u8 = undefined;
     var non_empty2 = network.NonEmptyBytes.init(&write_buffer);

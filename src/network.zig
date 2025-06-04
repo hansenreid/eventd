@@ -68,7 +68,7 @@ pub const Deserializer = struct {
         return int.to_native();
     }
 
-    pub fn next_string(self: *Deserializer) ![]const u8 {
+    pub fn next_string(self: *Deserializer, max_len: usize) ![]const u8 {
         self.assert_invariants();
 
         if (self.pos == self.bytes.items.len) {
@@ -77,7 +77,13 @@ pub const Deserializer = struct {
 
         const bytes = self.bytes.items[self.pos..self.bytes.items.len];
 
+        var count: usize = 0;
         const size = for (bytes, 0..) |char, idx| {
+            if (count > max_len) {
+                return error.StringLongerThanMax;
+            }
+            count += 1;
+
             if (char == 0) {
                 break idx;
             }
@@ -253,9 +259,11 @@ test "can serialize and deserialize multiple strings" {
 
     var deserializer = Deserializer.init(&non_empty);
 
-    const result1 = try deserializer.next_string();
-    const result2 = try deserializer.next_string();
-    const result3 = deserializer.next_string();
+    const result1 = try deserializer.next_string(100);
+    const result2 = try deserializer.next_string(100);
+    const result3 = deserializer.next_string(100);
+
+    // TODO: Add test for string longer than max
 
     try expect(std.mem.eql(u8, result1, hello));
     try expect(std.mem.eql(u8, result2, world));
