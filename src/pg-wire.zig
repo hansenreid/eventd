@@ -67,7 +67,10 @@ pub const Startup = struct {
                 return error.TooManyParams;
             }
 
-            const key = deserializer.next_string(max_param_len) catch |err| {
+            const remaining = len.item - read;
+            const max_length = if (remaining < max_param_len) remaining else max_param_len;
+
+            const key = deserializer.next_string(max_length) catch |err| {
                 switch (err) {
                     error.EndOfBytes => {
                         break :blk;
