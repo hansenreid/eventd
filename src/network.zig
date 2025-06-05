@@ -50,6 +50,7 @@ pub const Deserializer = struct {
         return deserializer;
     }
 
+    // TODO: Return bytes read;
     pub fn next_int(self: *Deserializer, T: type) !T {
         self.assert_invariants();
 
@@ -68,6 +69,7 @@ pub const Deserializer = struct {
         return int.to_native();
     }
 
+    // TODO: Return bytes read;
     pub fn next_string(self: *Deserializer, max_len: usize) ![]const u8 {
         self.assert_invariants();
 
