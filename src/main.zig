@@ -71,5 +71,5 @@ export fn run() void {
         return;
     };
 
-    std.debug.print("Result: 0x{x}\n", .{result});
+    std.debug.print("Result: 0x{x}\n", .{result.item});
 }

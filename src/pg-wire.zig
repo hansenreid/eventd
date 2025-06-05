@@ -45,22 +45,23 @@ pub const Startup = struct {
 
     pub fn deserialize(deserializer: *network.Deserializer) !Startup {
         deserializer.assert_invariants();
-        var pos: usize = 0;
+
+        var read: usize = 0;
 
         const len = try deserializer.next_int(u32);
-        pos += @sizeOf(u32);
+        read += len.bytes_read;
 
         const major = try deserializer.next_int(u16);
-        pos += @sizeOf(u16);
+        read += major.bytes_read;
 
         const minor = try deserializer.next_int(u16);
-        pos += @sizeOf(u16);
+        read += minor.bytes_read;
 
         var user: ?[]const u8 = null;
         var database: ?[]const u8 = null;
 
         var count: usize = 0;
-        blk: while (count <= max_params and pos < len) {
+        blk: while (count <= max_params and read < len.item) {
             count += 1;
             if (count > max_params) {
                 return error.TooManyParams;
@@ -75,22 +76,23 @@ pub const Startup = struct {
                 }
             };
 
-            pos += key.len + 1;
+            read += key.bytes_read;
 
             const val = deserializer.next_string(max_param_len) catch |err| {
                 std.debug.print("err: {any}\n", .{err});
                 return error.InvalidStartParams;
             };
-            pos += val.len + 1;
 
-            const param = std.meta.stringToEnum(StartupParam, key) orelse {
-                std.debug.print("Ignoring unkown param: {s}\n", .{key});
+            read += val.bytes_read;
+
+            const param = std.meta.stringToEnum(StartupParam, key.item) orelse {
+                std.debug.print("Ignoring unkown param: {s}\n", .{key.item});
                 continue;
             };
 
             switch (param) {
-                .user => user = val,
-                .database => database = val,
+                .user => user = val.item,
+                .database => database = val.item,
             }
         }
 
@@ -98,7 +100,7 @@ pub const Startup = struct {
             return error.MissingUserParam;
         }
 
-        const startup = try Startup.init(major, minor, user.?, database);
+        const startup = try Startup.init(major.item, minor.item, user.?, database);
         startup.assert_invariants();
 
         return startup;

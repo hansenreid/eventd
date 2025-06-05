@@ -29,6 +29,13 @@ pub const NonEmptyBytes = struct {
     }
 };
 
+pub fn ReadResult(comptime T: type) type {
+    return struct {
+        bytes_read: usize,
+        item: T,
+    };
+}
+
 pub const Deserializer = struct {
     bytes: *NonEmptyBytes,
     pos: usize = 0,
@@ -50,8 +57,7 @@ pub const Deserializer = struct {
         return deserializer;
     }
 
-    // TODO: Return bytes read;
-    pub fn next_int(self: *Deserializer, T: type) !T {
+    pub fn next_int(self: *Deserializer, T: type) !ReadResult(T) {
         self.assert_invariants();
 
         const size = @sizeOf(T);
@@ -66,11 +72,14 @@ pub const Deserializer = struct {
         self.pos += size;
 
         self.assert_invariants();
-        return int.to_native();
+
+        return .{
+            .bytes_read = size,
+            .item = int.to_native(),
+        };
     }
 
-    // TODO: Return bytes read;
-    pub fn next_string(self: *Deserializer, max_len: usize) ![]const u8 {
+    pub fn next_string(self: *Deserializer, max_len: usize) !ReadResult([]const u8) {
         self.assert_invariants();
 
         if (self.pos == self.bytes.items.len) {
@@ -97,7 +106,12 @@ pub const Deserializer = struct {
         self.pos = self.pos + size + 1;
 
         self.assert_invariants();
-        return string;
+
+        return .{
+            // Add one to account for the zero byte
+            .bytes_read = size + 1,
+            .item = string,
+        };
     }
 };
 
@@ -217,17 +231,17 @@ test "can serialize and deserialize multiple ints" {
     const result4 = deserializer.next_int(u8);
 
     try expect(std.meta.eql(
-        result1,
+        result1.item,
         0x1234,
     ));
 
     try expect(std.meta.eql(
-        result2,
+        result2.item,
         0x34,
     ));
 
     try expect(std.meta.eql(
-        result3,
+        result3.item,
         0x12,
     ));
 
@@ -265,8 +279,8 @@ test "can serialize and deserialize multiple strings" {
     const result2 = try deserializer.next_string(100);
     const result3 = deserializer.next_string(100);
 
-    try expect(std.mem.eql(u8, result1, hello));
-    try expect(std.mem.eql(u8, result2, world));
+    try expect(std.mem.eql(u8, result1.item, hello));
+    try expect(std.mem.eql(u8, result2.item, world));
     try expect(std.meta.eql(result3, error.EndOfBytes));
 }
 
