@@ -263,11 +263,24 @@ test "can serialize and deserialize multiple strings" {
     const result2 = try deserializer.next_string(100);
     const result3 = deserializer.next_string(100);
 
-    // TODO: Add test for string longer than max
-
     try expect(std.mem.eql(u8, result1, hello));
     try expect(std.mem.eql(u8, result2, world));
     try expect(std.meta.eql(result3, error.EndOfBytes));
+}
+
+test "deserializing string longer than max returns error" {
+    var buffer: [12]u8 = undefined;
+    var non_empty = NonEmptyBytes.init(&buffer);
+
+    const hello = "hello world";
+
+    var serializer = Serializer.init(&non_empty);
+    try serializer.write_string(hello);
+
+    var deserializer = Deserializer.init(&non_empty);
+    const result = deserializer.next_string(5);
+
+    try expect(std.meta.eql(result, error.StringLongerThanMax));
 }
 
 test "mark bytes as corrupt when string write partially succeeds" {
