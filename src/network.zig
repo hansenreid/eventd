@@ -213,26 +213,15 @@ test "can transform netowrk int to native int and back" {
     ));
 }
 
-test "deserialize, parse, and serialize" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
-}
-
 test "can serialize and deserialize multiple ints" {
-    var buffer: [4]u8 = undefined;
+    var buffer: [12]u8 = undefined;
     var non_empty = try NonEmptyBytes.init(&buffer);
 
     var serializer = Serializer.init(&non_empty);
     try serializer.write_int(u16, 0x1234);
     try serializer.write_int(u8, 0x34);
     try serializer.write_int(u8, 0x12);
+    try serializer.write_int(u64, 0xfd93283ffe172a0d);
 
     const no_space_left = serializer.write_int(u8, 0x00);
     try expect(std.meta.eql(no_space_left, error.NoSpaceLeft));
@@ -242,7 +231,8 @@ test "can serialize and deserialize multiple ints" {
     const result1 = try deserializer.next_int(u16);
     const result2 = try deserializer.next_int(u8);
     const result3 = try deserializer.next_int(u8);
-    const result4 = deserializer.next_int(u8);
+    const result4 = try deserializer.next_int(u64);
+    const result5 = deserializer.next_int(u8);
 
     try expect(std.meta.eql(
         result1.item,
@@ -259,7 +249,12 @@ test "can serialize and deserialize multiple ints" {
         0x12,
     ));
 
-    try expect(std.meta.eql(result4, error.NotEnoughBytes));
+    try expect(std.meta.eql(
+        result4.item,
+        0xfd93283ffe172a0d,
+    ));
+
+    try expect(std.meta.eql(result5, error.NotEnoughBytes));
 }
 
 test "mark bytes as corrupt when int write partially succeeds" {
@@ -321,4 +316,101 @@ test "mark bytes as corrupt when string write partially succeeds" {
     const fail = serializer.write_string("fail");
     try expect(std.meta.eql(fail, error.NotEnoughBytes));
     try expect(non_empty.corrupt);
+}
+
+test "fuzz strings" {
+    const Context = struct {
+        allocator: std.mem.Allocator,
+
+        fn testOne(context: @This(), input: []const u8) anyerror!void {
+            const bytes = try context.allocator.alloc(u8, input.len);
+            defer context.allocator.free(bytes);
+
+            @memcpy(bytes, input);
+
+            var non_empty = NonEmptyBytes.init(bytes) catch {
+                return;
+            };
+
+            var deserializer = Deserializer.init(&non_empty);
+            const result = deserializer.next_string(input.len) catch |err| {
+                switch (err) {
+                    error.StringLongerThanMax, error.SentinelNotFound => return,
+                    else => return err,
+                }
+            };
+
+            const output = try context.allocator.alloc(u8, result.bytes_read);
+            defer context.allocator.free(output);
+
+            var out_bytes = try NonEmptyBytes.init(output);
+            var serializer = Serializer.init(&out_bytes);
+
+            try serializer.write_string(result.item);
+            try expect(std.mem.eql(u8, input[0..result.bytes_read], output));
+        }
+    };
+
+    const allocator = std.testing.allocator;
+    try std.testing.fuzz(Context{ .allocator = allocator }, Context.testOne, .{});
+}
+
+test "fuzz integers" {
+    const Context = struct {
+        allocator: std.mem.Allocator,
+
+        fn testOne(context: @This(), input: []const u8) anyerror!void {
+            const bytes = try context.allocator.alloc(u8, input.len);
+            defer context.allocator.free(bytes);
+
+            @memcpy(bytes, input);
+
+            var non_empty = NonEmptyBytes.init(bytes) catch {
+                return;
+            };
+
+            var deserializer = Deserializer.init(&non_empty);
+            var len: usize = 0;
+            const int: u64 = blk: switch (input.len) {
+                1 => {
+                    len = 1;
+                    const result = try deserializer.next_int(u8);
+                    break :blk @intCast(result.item);
+                },
+                2, 3 => {
+                    len = 2;
+                    const result = try deserializer.next_int(u16);
+                    break :blk @intCast(result.item);
+                },
+                4...7 => {
+                    len = 4;
+                    const result = try deserializer.next_int(u32);
+                    break :blk @intCast(result.item);
+                },
+                else => {
+                    len = 8;
+                    const result = try deserializer.next_int(u64);
+                    break :blk @intCast(result.item);
+                },
+            };
+
+            const output = try context.allocator.alloc(u8, len);
+            defer context.allocator.free(output);
+
+            var out_bytes = try NonEmptyBytes.init(output);
+            var serializer = Serializer.init(&out_bytes);
+
+            switch (len) {
+                1 => try serializer.write_int(u8, @truncate(int)),
+                2, 3 => try serializer.write_int(u16, @truncate(int)),
+                4...7 => try serializer.write_int(u32, @truncate(int)),
+                else => try serializer.write_int(u64, int),
+            }
+
+            try expect(std.mem.eql(u8, input[0..len], output));
+        }
+    };
+
+    const allocator = std.testing.allocator;
+    try std.testing.fuzz(Context{ .allocator = allocator }, Context.testOne, .{});
 }
