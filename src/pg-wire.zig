@@ -168,3 +168,28 @@ test "can serialize and deserialize startup message" {
 
     try std.testing.expectEqualDeep(startup, result);
 }
+
+test "fuzz startup" {
+    const Context = struct {
+        allocator: std.mem.Allocator,
+
+        fn testOne(context: @This(), input: []const u8) anyerror!void {
+            const bytes = try context.allocator.alloc(u8, input.len);
+            defer context.allocator.free(bytes);
+
+            @memcpy(bytes, input);
+
+            var non_empty = network.NonEmptyBytes.init(bytes) catch {
+                return;
+            };
+
+            var deserializer = network.Deserializer.init(&non_empty);
+
+            // We only care that it doesn't panic on random bytes
+            _ = Startup.deserialize(&deserializer) catch {};
+        }
+    };
+
+    const allocator = std.testing.allocator;
+    try std.testing.fuzz(Context{ .allocator = allocator }, Context.testOne, .{});
+}
