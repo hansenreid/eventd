@@ -4,12 +4,26 @@ const linux_io = @import("io/linux.zig");
 const wasm_io = @import("io/wasm.zig");
 const pg_wire = @import("pg-wire.zig");
 const network = @import("network.zig");
+const IOLoop = @import("io_loop.zig");
+const commands = @import("io_commands.zig");
 
 pub fn main() !void {
     run();
 }
 
+fn dummy(context: *anyopaque) void {
+    const continuation: *IOLoop.Continuation = @ptrCast(@alignCast(context));
+    const r: *commands.WriteCommand.WriteResult = @ptrCast(@alignCast(continuation.result));
+    r.code = 0;
+
+    std.debug.print("result: {any}\n", .{r});
+
+    std.debug.print("Hello from a dummy function\n", .{});
+}
+
 export fn run() void {
+    const allocator = std.heap.page_allocator;
+
     var io_impl = comptime blk: {
         switch (builtin.os.tag) {
             .linux, .wasi => break :blk linux_io{},
@@ -18,62 +32,23 @@ export fn run() void {
         }
     };
 
-    const io = io_impl.io();
+    const buffer: [256]u8 = undefined;
 
-    var bytes = [_]u8{
-        0x11,
-        0x00,
-        0x00,
-        0x00,
-        0x03,
-        0x00,
-        0x00,
-        0x00,
-        'u',
-        's',
-        'e',
-        'r',
-        0x00,
-        'b',
-        'o',
-        'b',
-        0x00,
-    };
-
-    var non_empty = network.NonEmptyBytes.init(&bytes) catch {
+    var io = io_impl.io();
+    var loop = IOLoop.init(allocator, &io);
+    var write = commands.WriteCommand.init(allocator, &buffer) catch {
         unreachable;
     };
-    var d = network.Deserializer.init(&non_empty);
 
-    const startup = pg_wire.Startup.deserialize(&d) catch |err| {
-        std.debug.print("err: {any}\n", .{err});
-        io.log("Failed to parse startup message\n");
-        return;
-    };
-
-    std.debug.print("major version: {d}\n", .{startup.major_version});
-    std.debug.print("minor version: {d}\n", .{startup.minor_version});
-    std.debug.print("user: {?s}\n", .{startup.user});
-    std.debug.print("database: {?s}\n", .{startup.database});
-
-    var write_buffer: [256]u8 = undefined;
-    var non_empty2 = network.NonEmptyBytes.init(&write_buffer) catch {
+    loop.enqueue(&write, dummy, write.write.result) catch {
         unreachable;
     };
-    var serializer = network.Serializer.init(&non_empty2);
 
-    const value: u16 = 0x1234;
-    std.debug.print("Starting: 0x{x}\n", .{value});
-
-    serializer.write_int(u16, value) catch |err| {
-        std.debug.print("Error serializing: {any}\n", .{err});
+    loop.tick() catch {
+        unreachable;
     };
 
-    var deserializer = network.Deserializer.init(&non_empty2);
-    const result = deserializer.next_int(u16) catch |err| {
-        std.debug.print("Error deserializing : {any}\n", .{err});
-        return;
+    loop.tick() catch {
+        unreachable;
     };
-
-    std.debug.print("Result: 0x{x}\n", .{result.item});
 }
