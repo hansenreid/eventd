@@ -158,7 +158,7 @@ test "can serialize and deserialize startup message" {
     const startup = try Startup.init(3, 0, "bob", null);
 
     var buffer: [256]u8 = undefined;
-    var non_empty = network.NonEmptyBytes.init(&buffer);
+    var non_empty = try network.NonEmptyBytes.init(&buffer);
 
     var serializer = network.Serializer.init(&non_empty);
     try startup.serialize(&serializer);

@@ -13,8 +13,10 @@ pub const NonEmptyBytes = struct {
         assert(self.items.len >= 1);
     }
 
-    pub fn init(bytes: []u8) NonEmptyBytes {
-        assert(bytes.len >= 1);
+    pub fn init(bytes: []u8) !NonEmptyBytes {
+        if (bytes.len == 0) {
+            return error.Empty;
+        }
 
         const non_empty_bytes = NonEmptyBytes{
             .items = bytes,
@@ -211,9 +213,21 @@ test "can transform netowrk int to native int and back" {
     ));
 }
 
+test "deserialize, parse, and serialize" {
+    const Context = struct {
+        fn testOne(context: @This(), input: []const u8) anyerror!void {
+            _ = context;
+
+            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
+            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
+        }
+    };
+    try std.testing.fuzz(Context{}, Context.testOne, .{});
+}
+
 test "can serialize and deserialize multiple ints" {
     var buffer: [4]u8 = undefined;
-    var non_empty = NonEmptyBytes.init(&buffer);
+    var non_empty = try NonEmptyBytes.init(&buffer);
 
     var serializer = Serializer.init(&non_empty);
     try serializer.write_int(u16, 0x1234);
@@ -250,7 +264,7 @@ test "can serialize and deserialize multiple ints" {
 
 test "mark bytes as corrupt when int write partially succeeds" {
     var buffer: [1]u8 = undefined;
-    var non_empty = NonEmptyBytes.init(&buffer);
+    var non_empty = try NonEmptyBytes.init(&buffer);
     var serializer = Serializer.init(&non_empty);
 
     const fail = serializer.write_int(u16, 0x1234);
@@ -260,7 +274,7 @@ test "mark bytes as corrupt when int write partially succeeds" {
 
 test "can serialize and deserialize multiple strings" {
     var buffer: [12]u8 = undefined;
-    var non_empty = NonEmptyBytes.init(&buffer);
+    var non_empty = try NonEmptyBytes.init(&buffer);
 
     const hello = "hello";
     const world = "world";
@@ -286,7 +300,7 @@ test "can serialize and deserialize multiple strings" {
 
 test "deserializing string longer than max returns error" {
     var buffer: [12]u8 = undefined;
-    var non_empty = NonEmptyBytes.init(&buffer);
+    var non_empty = try NonEmptyBytes.init(&buffer);
 
     const hello = "hello world";
 
@@ -301,7 +315,7 @@ test "deserializing string longer than max returns error" {
 
 test "mark bytes as corrupt when string write partially succeeds" {
     var buffer: [1]u8 = undefined;
-    var non_empty = NonEmptyBytes.init(&buffer);
+    var non_empty = try NonEmptyBytes.init(&buffer);
     var serializer = Serializer.init(&non_empty);
 
     const fail = serializer.write_string("fail");

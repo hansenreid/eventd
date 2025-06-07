@@ -40,7 +40,9 @@ export fn run() void {
         0x00,
     };
 
-    var non_empty = network.NonEmptyBytes.init(&bytes);
+    var non_empty = network.NonEmptyBytes.init(&bytes) catch {
+        unreachable;
+    };
     var d = network.Deserializer.init(&non_empty);
 
     const startup = pg_wire.Startup.deserialize(&d) catch |err| {
@@ -55,7 +57,9 @@ export fn run() void {
     std.debug.print("database: {?s}\n", .{startup.database});
 
     var write_buffer: [256]u8 = undefined;
-    var non_empty2 = network.NonEmptyBytes.init(&write_buffer);
+    var non_empty2 = network.NonEmptyBytes.init(&write_buffer) catch {
+        unreachable;
+    };
     var serializer = network.Serializer.init(&non_empty2);
 
     const value: u16 = 0x1234;
