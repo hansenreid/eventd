@@ -35,21 +35,22 @@ pub fn tick(self: *IOLoop) !void {
 
     var node = self.continuations.first;
     var count: usize = 0;
+    // std.debug.print("IO Loop count: {d}\n", .{self.count});
     while (node) |n| {
-        std.debug.print("Hello from node {d}\n", .{count});
         const c: *Continuation = @fieldParentPtr("node", n);
 
+        // Need to set next before potentially destroying the memory
+        node = n.next;
         switch (c.status) {
             .submitted => try self.handle_submitted(c),
-            .waiting => std.debug.print("Waiting not implemented", .{}),
-            .completed => try self.handle_completed(c),
+            .waiting => {},
+            .completed => {
+                try self.handle_completed(c);
+                self.allocator.destroy(c);
+            },
         }
 
-        // IO should mark the command as waiting or completed
-        assert(c.status == commands.Status.waiting or c.status == commands.Status.completed);
-
         count += 1;
-        node = n.next;
     }
 
     self.io.tick();
@@ -57,15 +58,19 @@ pub fn tick(self: *IOLoop) !void {
     self.assert_invariants();
 }
 
-fn handle_submitted(self: *IOLoop, continuation: *Continuation) !void {
-    switch (continuation.command.*) {
-        .write => self.io.write(continuation.command.write, &continuation.status),
+fn handle_submitted(self: *IOLoop, c: *Continuation) !void {
+    switch (c.command.*) {
+        .write => self.io.write(c.command.write, &c.status),
     }
+
+    // IO should mark the command as waiting or completed
+    assert(c.status == commands.Status.waiting or c.status == commands.Status.completed);
 }
 
 fn handle_completed(self: *IOLoop, continuation: *Continuation) !void {
-    _ = self;
     continuation.callback(continuation);
+    self.continuations.remove(&continuation.node);
+    self.count -= 1;
 }
 
 pub fn enqueue(self: *IOLoop, command: *commands.Command, callback: callback_t, result: *anyopaque) !void {
