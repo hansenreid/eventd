@@ -23,18 +23,22 @@ pub fn main() !void {
     var io = io_impl.io();
 
     var loop = IOLoop.init(allocator, &io);
+    var events: usize = 0;
 
     var count: usize = 0;
-    while (count < 10000) {
+    while (count < 10_000) {
         for (0..rand.int(u4)) |_| {
             const buffer: [256]u8 = undefined;
             var write = commands.WriteCommand.init(allocator, &buffer) catch {
                 unreachable;
             };
 
-            loop.enqueue(&write, dummy, write.write.result) catch {
-                unreachable;
+            loop.enqueue(&write, dummy, write.write.result) catch |err| {
+                std.debug.print("Error during enqueue: {any}\n", .{err});
+                continue;
             };
+
+            events += 1;
         }
         loop.tick() catch {
             unreachable;
@@ -51,4 +55,6 @@ pub fn main() !void {
 
         count2 += 1;
     }
+
+    std.debug.print("Handled {d} events\n", .{events});
 }

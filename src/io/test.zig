@@ -9,8 +9,12 @@ pub const test_io = @This();
 
 allocator: Allocator,
 io_ops: DoublyLinkedList,
+unused: DoublyLinkedList,
 rand: std.Random,
 count: u32,
+
+const LIST_SIZE = 1000;
+var list: [LIST_SIZE]Ops = undefined;
 
 const Ops = struct {
     node: DoublyLinkedList.Node,
@@ -19,9 +23,16 @@ const Ops = struct {
 };
 
 pub fn init(allocator: Allocator, rand: std.Random) test_io {
+    var unused: DoublyLinkedList = .{};
+    for (&list) |*o| {
+        o.node = .{};
+        unused.append(&o.node);
+    }
+
     return .{
         .allocator = allocator,
         .io_ops = .{},
+        .unused = unused,
         .rand = rand,
         .count = 0,
     };
@@ -51,7 +62,7 @@ fn tick(ptr: *anyopaque) void {
         if (op.count > self.rand.int(u4)) {
             op.status.* = .completed;
             self.io_ops.remove(n);
-            self.allocator.destroy(op);
+            self.unused.append(n);
             self.count -= 1;
         } else {
             op.count += 1;
@@ -72,11 +83,12 @@ fn write(ptr: *anyopaque, write_command: commands.WriteCommand, status: *command
     assert(status.* == commands.Status.submitted);
     const self: *test_io = @ptrCast(@alignCast(ptr));
 
-    // TODO: figure out error handling
-    var op = self.allocator.create(Ops) catch {
+    // TODO: Figure out error handling
+    const node = self.unused.pop() orelse {
         unreachable;
     };
-    op.node = .{};
+
+    var op: *Ops = @fieldParentPtr("node", node);
     op.count = 0;
     op.status = status;
 

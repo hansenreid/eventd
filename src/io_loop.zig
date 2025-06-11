@@ -13,17 +13,28 @@ allocator: Allocator,
 io: *IO,
 count: u32,
 continuations: DoublyLinkedList,
+unused: DoublyLinkedList,
+
+const LIST_SIZE = 1000;
+var list: [LIST_SIZE]Continuation = undefined;
 
 fn assert_invariants(self: *IOLoop) void {
     _ = self;
 }
 
 pub fn init(allocator: Allocator, io: *IO) IOLoop {
+    var unused: DoublyLinkedList = .{};
+    for (&list) |*c| {
+        c.node = .{};
+        unused.append(&c.node);
+    }
+
     var loop = IOLoop{
         .allocator = allocator,
         .io = io,
         .count = 0,
         .continuations = .{},
+        .unused = unused,
     };
 
     loop.assert_invariants();
@@ -44,10 +55,7 @@ pub fn tick(self: *IOLoop) !void {
         switch (c.status) {
             .submitted => try self.handle_submitted(c),
             .waiting => {},
-            .completed => {
-                try self.handle_completed(c);
-                self.allocator.destroy(c);
-            },
+            .completed => try self.handle_completed(c),
         }
 
         count += 1;
@@ -70,17 +78,22 @@ fn handle_submitted(self: *IOLoop, c: *Continuation) !void {
 fn handle_completed(self: *IOLoop, continuation: *Continuation) !void {
     continuation.callback(continuation);
     self.continuations.remove(&continuation.node);
+    self.unused.append(&continuation.node);
     self.count -= 1;
 }
 
 pub fn enqueue(self: *IOLoop, command: *commands.Command, callback: callback_t, result: *anyopaque) !void {
     self.assert_invariants();
 
-    // TODO deinit
-    var continuation = try self.allocator.create(Continuation);
-    continuation.init(command, callback, result);
+    const node = self.unused.pop() orelse {
+        return error.NoFreeContinuations;
+    };
 
-    self.continuations.append(&continuation.node);
+    var c: *Continuation = @fieldParentPtr("node", node);
+
+    c.init(command, callback, result);
+
+    self.continuations.append(&c.node);
 
     self.count += 1;
 
