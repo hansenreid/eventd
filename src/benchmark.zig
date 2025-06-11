@@ -12,8 +12,8 @@ fn dummy(context: *anyopaque) void {
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    var seed: u64 = undefined;
-    try std.posix.getrandom(std.mem.asBytes(&seed));
+    const seed: u64 = 0x3b5f92f093d3071b;
+    // try std.posix.getrandom(std.mem.asBytes(&seed));
     var prng = std.Random.DefaultPrng.init(seed);
 
     std.debug.print("Seed: {x}\n", .{seed});
@@ -25,7 +25,7 @@ pub fn main() !void {
     var loop = IOLoop.init(allocator, &io);
 
     var count: usize = 0;
-    while (count < 1000) {
+    while (count < 10000) {
         for (0..rand.int(u4)) |_| {
             const buffer: [256]u8 = undefined;
             var write = commands.WriteCommand.init(allocator, &buffer) catch {
@@ -44,7 +44,7 @@ pub fn main() !void {
     }
 
     var count2: usize = 0;
-    while (count2 < 20) {
+    while (count2 < 200) {
         loop.tick() catch {
             unreachable;
         };
