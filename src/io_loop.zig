@@ -3,6 +3,7 @@ const DoublyLinkedList = std.DoublyLinkedList;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const commands = @import("io_commands.zig");
+const tracy = @import("tracy.zig");
 
 const IO = @import("io.zig");
 
@@ -82,7 +83,7 @@ fn handle_completed(self: *IOLoop, continuation: *Continuation) !void {
     self.count -= 1;
 }
 
-pub fn enqueue(self: *IOLoop, command: *commands.Command, callback: callback_t, result: *anyopaque) !void {
+pub fn enqueue(self: *IOLoop, command: *commands.Command, callback: callback_t) !void {
     self.assert_invariants();
 
     const node = self.unused.pop() orelse {
@@ -91,7 +92,7 @@ pub fn enqueue(self: *IOLoop, command: *commands.Command, callback: callback_t, 
 
     var c: *Continuation = @fieldParentPtr("node", node);
 
-    c.init(command, callback, result);
+    c.init(command, callback);
 
     self.continuations.append(&c.node);
 
@@ -105,12 +106,10 @@ pub const Continuation = struct {
     status: commands.Status,
     node: DoublyLinkedList.Node,
     callback: callback_t,
-    result: *anyopaque,
 
-    pub fn init(ptr: *Continuation, command: *commands.Command, callback: callback_t, result: *anyopaque) void {
+    pub fn init(ptr: *Continuation, command: *commands.Command, callback: callback_t) void {
         ptr.status = .submitted;
         ptr.command = command;
         ptr.callback = callback;
-        ptr.result = result;
     }
 };

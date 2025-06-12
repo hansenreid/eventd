@@ -7,16 +7,16 @@ const network = @import("network.zig");
 const IOLoop = @import("io_loop.zig");
 const commands = @import("io_commands.zig");
 
+const tracy = @import("tracy.zig");
+
 pub fn main() !void {
     run();
 }
 
 fn dummy(context: *anyopaque) void {
     const continuation: *IOLoop.Continuation = @ptrCast(@alignCast(context));
-    const r: *commands.WriteCommand.WriteResult = @ptrCast(@alignCast(continuation.result));
-    r.code = 0;
 
-    std.debug.print("result: {any}\n", .{r});
+    std.debug.print("result: {any}\n", .{continuation.status});
 
     std.debug.print("Hello from a dummy function\n", .{});
 }
@@ -36,11 +36,11 @@ export fn run() void {
 
     var io = io_impl.io();
     var loop = IOLoop.init(allocator, &io);
-    var write = commands.WriteCommand.init(allocator, &buffer) catch {
+    var write = commands.WriteCommand.init(&buffer) catch {
         unreachable;
     };
 
-    loop.enqueue(&write, dummy, write.write.result) catch {
+    loop.enqueue(&write, dummy) catch {
         unreachable;
     };
 

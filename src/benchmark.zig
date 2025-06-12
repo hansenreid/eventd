@@ -2,14 +2,17 @@ const std = @import("std");
 const test_io = @import("io/test.zig");
 const IOLoop = @import("io_loop.zig");
 const commands = @import("io_commands.zig");
+const tracy = @import("tracy.zig");
 
 fn dummy(context: *anyopaque) void {
     const continuation: *IOLoop.Continuation = @ptrCast(@alignCast(context));
-    const r: *commands.WriteCommand.WriteResult = @ptrCast(@alignCast(continuation.result));
-    r.code = 0;
+    _ = continuation;
 }
 
 pub fn main() !void {
+    // tracy.setThreadName("Main");
+    // defer tracy.message("Graceful main thread exit", .{});
+
     const allocator = std.heap.page_allocator;
 
     const seed: u64 = 0x3b5f92f093d3071b;
@@ -27,13 +30,14 @@ pub fn main() !void {
 
     var count: usize = 0;
     while (count < 10_000) {
+        tracy.frameMark();
         for (0..rand.int(u4)) |_| {
             const buffer: [256]u8 = undefined;
-            var write = commands.WriteCommand.init(allocator, &buffer) catch {
+            var write = commands.WriteCommand.init(&buffer) catch {
                 unreachable;
             };
 
-            loop.enqueue(&write, dummy, write.write.result) catch |err| {
+            loop.enqueue(&write, dummy) catch |err| {
                 std.debug.print("Error during enqueue: {any}\n", .{err});
                 continue;
             };

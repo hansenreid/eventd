@@ -2,14 +2,22 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-
     const optimize = b.standardOptimizeOption(.{});
+    const options = b.addOptions();
+
+    options.addOption(bool, "enable_tracy", false);
+
+    const tracy_enable =
+        b.option(bool, "tracy_enable", "Enable profiling") orelse
+        if (optimize == .Debug) true else false;
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+
+    exe_mod.addOptions("build_options", options);
 
     exe_mod.export_symbol_names = &.{
         "run",
@@ -48,6 +56,8 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSafe,
     });
 
+    benchmark_mod.addOptions("build_options", options);
+
     benchmark_mod.export_symbol_names = &.{
         "run",
     };
@@ -65,4 +75,21 @@ pub fn build(b: *std.Build) void {
 
     const benchmark_run_step = b.step("run-bench", "Build the benchmark");
     benchmark_run_step.dependOn(&benchmark_run.step);
+
+    if (tracy_enable) {
+        const client_cpp = "../../tools/tracy/public/TracyClient.cpp";
+        const tracy_c_flags: []const []const u8 = if (target.result.os.tag == .windows and target.result.abi == .gnu)
+            &[_][]const u8{ "-DTRACY_ENABLE=1", "-fno-sanitize=undefined", "-D_WIN32_WINNT=0x601" }
+        else
+            &[_][]const u8{ "-DTRACY_ENABLE=1", "-fno-sanitize=undefined" };
+
+        exe.addIncludePath(.{ .cwd_relative = "../../tools/tracy" });
+        benchmark_exe.addIncludePath(.{ .cwd_relative = "../../tools/tracy" });
+        exe.addCSourceFile(.{ .file = .{ .cwd_relative = client_cpp }, .flags = tracy_c_flags });
+        benchmark_exe.addCSourceFile(.{ .file = .{ .cwd_relative = client_cpp }, .flags = tracy_c_flags });
+        exe.root_module.linkSystemLibrary("c++", .{ .use_pkg_config = .no });
+        benchmark_exe.root_module.linkSystemLibrary("c++", .{ .use_pkg_config = .no });
+        exe.linkLibC();
+        benchmark_exe.linkLibC();
+    }
 }
