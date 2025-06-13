@@ -1,13 +1,10 @@
 const std = @import("std");
 const DoublyLinkedList = std.DoublyLinkedList;
 const assert = std.debug.assert;
-const IO = @import("../io.zig");
 const commands = @import("../io_commands.zig");
-const Allocator = std.mem.Allocator;
 
-pub const test_io = @This();
+pub const IO = @This();
 
-allocator: Allocator,
 io_ops: DoublyLinkedList,
 unused: DoublyLinkedList,
 rand: std.Random,
@@ -22,7 +19,11 @@ const Ops = struct {
     count: u8,
 };
 
-pub fn init(allocator: Allocator, rand: std.Random) test_io {
+pub fn init() IO {
+    const seed: u64 = 0x3b5f92f093d3071b;
+    // try std.posix.getrandom(std.mem.asBytes(&seed));
+    var prng = std.Random.DefaultPrng.init(seed);
+
     var unused: DoublyLinkedList = .{};
     for (&list) |*o| {
         o.node = .{};
@@ -30,27 +31,14 @@ pub fn init(allocator: Allocator, rand: std.Random) test_io {
     }
 
     return .{
-        .allocator = allocator,
         .io_ops = .{},
         .unused = unused,
-        .rand = rand,
+        .rand = prng.random(),
         .count = 0,
     };
 }
 
-pub fn io(self: *test_io) IO {
-    return .{
-        .ptr = self,
-        .vtable = &IO.VTable{
-            .tick = tick,
-            .logFn = log,
-            .writeFn = write,
-        },
-    };
-}
-
-fn tick(ptr: *anyopaque) void {
-    const self: *test_io = @ptrCast(@alignCast(ptr));
+pub fn tick(self: *IO) void {
     var node = self.io_ops.first;
 
     // std.debug.print("IO count: {d}\n", .{self.count});
@@ -70,18 +58,16 @@ fn tick(ptr: *anyopaque) void {
     }
 }
 
-fn log(ptr: *anyopaque, msg: []const u8) void {
-    const self: *test_io = @ptrCast(@alignCast(ptr));
+pub fn log(self: *IO, msg: []const u8) void {
     _ = self;
 
     std.debug.print("{s}\n", .{msg});
 }
 
-fn write(ptr: *anyopaque, write_command: commands.WriteCommand, status: *commands.Status) void {
+pub fn write(self: *IO, write_command: commands.WriteCommand, status: *commands.Status) void {
     _ = write_command;
 
     assert(status.* == commands.Status.submitted);
-    const self: *test_io = @ptrCast(@alignCast(ptr));
 
     // TODO: Figure out error handling
     const node = self.unused.pop() orelse {

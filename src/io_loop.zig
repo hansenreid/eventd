@@ -5,7 +5,7 @@ const Allocator = std.mem.Allocator;
 const commands = @import("io_commands.zig");
 const tracy = @import("tracy.zig");
 
-const IO = @import("io.zig");
+const IO = @import("io.zig").IO;
 
 pub const IOLoop = @This();
 pub const callback_t: type = *const fn (context: *anyopaque) void;

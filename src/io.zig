@@ -1,28 +1,10 @@
-const std = @import("std");
-const assert = std.debug.assert;
-const commands = @import("io_commands.zig");
+const builtin = @import("builtin");
+const options = @import("build_options");
 
-pub const IO = @This();
+const IO_Linux = @import("io/linux.zig").IO;
+const IO_Test = @import("io/test.zig").IO;
 
-vtable: *const VTable,
-ptr: *anyopaque,
-
-pub const VTable = struct {
-    tick: *const fn (ptr: *anyopaque) void,
-    logFn: *const fn (ptr: *anyopaque, msg: []const u8) void,
-    writeFn: *const fn (ptr: *anyopaque, write_command: commands.WriteCommand, status: *commands.Status) void,
+pub const IO = if (options.test_io) IO_Test else switch (builtin.target.os.tag) {
+    .linux => IO_Linux,
+    else => @compileError("IO is not supported for platform"),
 };
-
-pub fn tick(self: *IO) void {
-    self.vtable.tick(self.ptr);
-}
-
-pub fn log(self: *IO, msg: []const u8) void {
-    self.vtable.logFn(self.ptr, msg);
-}
-
-pub fn write(self: *IO, write_command: commands.WriteCommand, status: *commands.Status) void {
-    assert(status.* == commands.Status.submitted);
-    self.vtable.writeFn(self.ptr, write_command, status);
-    assert(status.* == commands.Status.waiting or status.* == commands.Status.completed);
-}

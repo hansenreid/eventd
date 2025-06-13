@@ -8,6 +8,9 @@ pub fn build(b: *std.Build) void {
     const tracy_enable = b.option(bool, "tracy_enable", "Enable profiling") orelse false;
     options.addOption(bool, "tracy_enable", tracy_enable);
 
+    const test_io = b.option(bool, "test_io", "Enable test io module") orelse false;
+    options.addOption(bool, "test_io", test_io);
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,

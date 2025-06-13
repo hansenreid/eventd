@@ -1,8 +1,10 @@
 const std = @import("std");
-const test_io = @import("io/test.zig");
 const IOLoop = @import("io_loop.zig");
+const IO = @import("io.zig").IO;
 const commands = @import("io_commands.zig");
 const tracy = @import("tracy.zig");
+
+const options = @import("build_options");
 
 fn dummy(context: *anyopaque) void {
     const continuation: *IOLoop.Continuation = @ptrCast(@alignCast(context));
@@ -22,8 +24,7 @@ pub fn main() !void {
     std.debug.print("Seed: {x}\n", .{seed});
 
     const rand = prng.random();
-    var io_impl = test_io.init(allocator, rand);
-    var io = io_impl.io();
+    var io = IO.init();
 
     var loop = IOLoop.init(allocator, &io);
     var events: usize = 0;
