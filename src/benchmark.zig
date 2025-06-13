@@ -1,8 +1,10 @@
 const std = @import("std");
 const IOLoop = @import("io_loop.zig");
-const IO = @import("io.zig").IO;
-const commands = @import("io_commands.zig");
 const tracy = @import("tracy.zig");
+
+const io_impl = @import("io.zig");
+const IO = io_impl.IO;
+const Command = io_impl.Command;
 
 const options = @import("build_options");
 
@@ -34,7 +36,7 @@ pub fn main() !void {
         tracy.frameMark();
         for (0..rand.int(u4)) |_| {
             const buffer: [256]u8 = undefined;
-            var write = commands.WriteCommand.init(&buffer) catch {
+            var write = Command.WriteCommand.init(&buffer) catch {
                 unreachable;
             };
 

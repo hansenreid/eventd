@@ -1,7 +1,10 @@
 const std = @import("std");
 const DoublyLinkedList = std.DoublyLinkedList;
 const assert = std.debug.assert;
-const commands = @import("../io_commands.zig");
+
+const io_impl = @import("../io.zig");
+const Command = io_impl.Command;
+const Status = Command.Status;
 
 pub const IO = @This();
 
@@ -15,7 +18,7 @@ var list: [LIST_SIZE]Ops = undefined;
 
 const Ops = struct {
     node: DoublyLinkedList.Node,
-    status: *commands.Status,
+    status: *Status,
     count: u8,
 };
 
@@ -64,10 +67,10 @@ pub fn log(self: *IO, msg: []const u8) void {
     std.debug.print("{s}\n", .{msg});
 }
 
-pub fn write(self: *IO, write_command: commands.WriteCommand, status: *commands.Status) void {
+pub fn write(self: *IO, write_command: Command.WriteCommand, status: *Status) void {
     _ = write_command;
 
-    assert(status.* == commands.Status.submitted);
+    assert(status.* == Status.submitted);
 
     // TODO: Figure out error handling
     const node = self.unused.pop() orelse {

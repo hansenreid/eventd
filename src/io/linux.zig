@@ -1,6 +1,9 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const commands = @import("../io_commands.zig");
+
+const io_impl = @import("../io.zig");
+const Command = io_impl.Command;
+const Status = Command.Status;
 
 pub const IO = @This();
 
@@ -20,8 +23,8 @@ pub fn log(self: *IO, msg: []const u8) void {
     std.debug.print("{s}\n", .{msg});
 }
 
-pub fn write(self: *IO, write_command: commands.WriteCommand, status: *commands.Status) void {
-    assert(status.* == commands.Status.submitted);
+pub fn write(self: *IO, write_command: Command.WriteCommand, status: *Status) void {
+    assert(status.* == Status.submitted);
     _ = self;
     _ = write_command;
 

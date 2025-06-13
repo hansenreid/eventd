@@ -1,10 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const pg_wire = @import("pg-wire.zig");
-const IO = @import("io.zig").IO;
 const network = @import("network.zig");
 const IOLoop = @import("io_loop.zig");
-const commands = @import("io_commands.zig");
+
+const io_impl = @import("io.zig");
+const IO = io_impl.IO;
+const Command = io_impl.Command;
 
 const tracy = @import("tracy.zig");
 
@@ -27,7 +29,7 @@ export fn run() void {
 
     var io = IO.init();
     var loop = IOLoop.init(allocator, &io);
-    var write = commands.WriteCommand.init(&buffer) catch {
+    var write = Command.WriteCommand.init(&buffer) catch {
         unreachable;
     };
 
