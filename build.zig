@@ -5,11 +5,8 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const options = b.addOptions();
 
-    options.addOption(bool, "enable_tracy", false);
-
-    const tracy_enable =
-        b.option(bool, "tracy_enable", "Enable profiling") orelse
-        if (optimize == .Debug) true else false;
+    const tracy_enable = b.option(bool, "tracy_enable", "Enable profiling") orelse false;
+    options.addOption(bool, "tracy_enable", tracy_enable);
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
