@@ -7,7 +7,6 @@ const tracy = @import("tracy.zig");
 const io_impl = @import("io.zig");
 const IO = io_impl.IO;
 const Command = io_impl.Command;
-const Status = Command.Status;
 
 pub const IOLoop = @This();
 pub const callback_t: type = *const fn (context: *anyopaque) void;
@@ -75,7 +74,7 @@ fn handle_submitted(self: *IOLoop, c: *Continuation) !void {
     }
 
     // IO should mark the command as waiting or completed
-    assert(c.status == Status.waiting or c.status == Status.completed);
+    assert(c.status == Continuation.Status.waiting or c.status == Continuation.Status.completed);
 }
 
 fn handle_completed(self: *IOLoop, continuation: *Continuation) !void {
@@ -108,6 +107,12 @@ pub const Continuation = struct {
     status: Status,
     node: DoublyLinkedList.Node,
     callback: callback_t,
+
+    pub const Status = enum {
+        submitted,
+        waiting,
+        completed,
+    };
 
     pub fn init(ptr: *Continuation, command: *Command, callback: callback_t) void {
         ptr.status = .submitted;

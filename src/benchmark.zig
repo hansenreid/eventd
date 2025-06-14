@@ -36,9 +36,13 @@ pub fn main() !void {
         tracy.frameMark();
         for (0..rand.int(u4)) |_| {
             const buffer: [256]u8 = undefined;
-            var write = Command.WriteCommand.init(&buffer) catch {
-                unreachable;
+
+            const write_data = io_impl.WriteData{
+                .buffer = &buffer,
+                .fd = 0,
             };
+
+            var write = write_data.to_cmd();
 
             loop.enqueue(&write, dummy) catch |err| {
                 std.debug.print("Error during enqueue: {any}\n", .{err});

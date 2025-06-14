@@ -29,9 +29,12 @@ export fn run() void {
 
     var io = IO.init();
     var loop = IOLoop.init(allocator, &io);
-    var write = Command.WriteCommand.init(&buffer) catch {
-        unreachable;
+    const write_data = io_impl.WriteData{
+        .buffer = &buffer,
+        .fd = 0,
     };
+
+    var write = write_data.to_cmd();
 
     loop.enqueue(&write, dummy) catch {
         unreachable;

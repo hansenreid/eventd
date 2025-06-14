@@ -4,7 +4,7 @@ const assert = std.debug.assert;
 
 const io_impl = @import("../io.zig");
 const Command = io_impl.Command;
-const Status = Command.Status;
+const Status = @import("../io_loop.zig").Continuation.Status;
 
 pub const IO = @This();
 
@@ -67,7 +67,7 @@ pub fn log(self: *IO, msg: []const u8) void {
     std.debug.print("{s}\n", .{msg});
 }
 
-pub fn write(self: *IO, write_command: Command.WriteCommand, status: *Status) void {
+pub fn write(self: *IO, write_command: io_impl.WriteCmd, status: *Status) void {
     _ = write_command;
 
     assert(status.* == Status.submitted);
