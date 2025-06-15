@@ -23,11 +23,13 @@ pub fn log(self: *IO, msg: []const u8) void {
     std.debug.print("{s}\n", .{msg});
 }
 
-pub fn write(self: *IO, write_command: io_impl.WriteCmd, status: *Status) void {
-    assert(status.* == Status.submitted);
+pub fn write(self: *IO, cmd: *io_impl.Command, status: *Status) void {
     _ = self;
-    _ = write_command;
+
+    assert(cmd.* == .write);
+    assert(status.* == Status.submitted);
 
     status.* = .completed;
+    cmd.write.result = io_impl.WriteResult{ .bytes_read = 10 };
     std.debug.print("Hello from write impl\n", .{});
 }

@@ -19,6 +19,7 @@ var list: [LIST_SIZE]Ops = undefined;
 const Ops = struct {
     node: DoublyLinkedList.Node,
     status: *Status,
+    cmd: *io_impl.Command,
     count: u8,
 };
 
@@ -51,10 +52,7 @@ pub fn tick(self: *IO) void {
         // Need to set next before potentially destroying the memory
         node = n.next;
         if (op.count > self.rand.int(u4)) {
-            op.status.* = .completed;
-            self.io_ops.remove(n);
-            self.unused.append(n);
-            self.count -= 1;
+            self.complete(op);
         } else {
             op.count += 1;
         }
@@ -67,21 +65,38 @@ pub fn log(self: *IO, msg: []const u8) void {
     std.debug.print("{s}\n", .{msg});
 }
 
-pub fn write(self: *IO, write_command: io_impl.WriteCmd, status: *Status) void {
-    _ = write_command;
+pub fn complete(self: *IO, op: *Ops) void {
+    op.status.* = .completed;
+    self.io_ops.remove(&op.node);
+    self.unused.append(&op.node);
+    self.count -= 1;
 
+    switch (op.cmd.*) {
+        .write => write_result(op.cmd),
+    }
+}
+
+pub fn write(self: *IO, cmd: *io_impl.Command, status: *Status) void {
+    assert(cmd.* == .write);
     assert(status.* == Status.submitted);
 
-    // TODO: Figure out error handling
     const node = self.unused.pop() orelse {
-        unreachable;
+        // If we don't have any unused space, don't mark as .waiting
+        // so that it gets resubmitted on the next tick
+        return;
     };
 
     var op: *Ops = @fieldParentPtr("node", node);
     op.count = 0;
     op.status = status;
+    op.cmd = cmd;
 
     self.io_ops.append(&op.node);
     status.* = .waiting;
     self.count += 1;
+}
+
+pub fn write_result(cmd: *io_impl.Command) void {
+    assert(cmd.* == .write);
+    cmd.write.result = io_impl.WriteResult{ .bytes_read = 10 };
 }

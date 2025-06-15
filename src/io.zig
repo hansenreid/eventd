@@ -11,6 +11,10 @@ pub const IO = if (options.test_io) IO_Test else switch (builtin.target.os.tag) 
     else => @compileError("IO is not supported for platform"),
 };
 
+pub const Command = union(enum) {
+    write: WriteCmd,
+};
+
 pub const Cmd = struct {
     data: struct {},
     result: struct {},
@@ -46,8 +50,4 @@ pub const WriteResult = struct {
     comptime {
         assert(@sizeOf(WriteResult) == @sizeOf(usize));
     }
-};
-
-pub const Command = union(enum) {
-    write: WriteCmd,
 };

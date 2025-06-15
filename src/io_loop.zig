@@ -48,16 +48,16 @@ pub fn tick(self: *IOLoop) !void {
 
     var node = self.continuations.first;
     var count: usize = 0;
-    // std.debug.print("IO Loop count: {d}\n", .{self.count});
     while (node) |n| {
         const c: *Continuation = @fieldParentPtr("node", n);
 
-        // Need to set next before potentially destroying the memory
+        // Need to set next before potentially removing
+        // the current node on completion
         node = n.next;
         switch (c.status) {
-            .submitted => try self.handle_submitted(c),
+            .submitted => self.handle_submitted(c),
             .waiting => {},
-            .completed => try self.handle_completed(c),
+            .completed => self.handle_completed(c),
         }
 
         count += 1;
@@ -68,16 +68,13 @@ pub fn tick(self: *IOLoop) !void {
     self.assert_invariants();
 }
 
-fn handle_submitted(self: *IOLoop, c: *Continuation) !void {
+fn handle_submitted(self: *IOLoop, c: *Continuation) void {
     switch (c.command.*) {
-        .write => self.io.write(c.command.write, &c.status),
+        .write => self.io.write(c.command, &c.status),
     }
-
-    // IO should mark the command as waiting or completed
-    assert(c.status == Continuation.Status.waiting or c.status == Continuation.Status.completed);
 }
 
-fn handle_completed(self: *IOLoop, continuation: *Continuation) !void {
+fn handle_completed(self: *IOLoop, continuation: *Continuation) void {
     continuation.callback(continuation);
     self.continuations.remove(&continuation.node);
     self.unused.append(&continuation.node);

@@ -18,6 +18,7 @@ fn dummy(context: *anyopaque) void {
     const continuation: *IOLoop.Continuation = @ptrCast(@alignCast(context));
 
     std.debug.print("result: {any}\n", .{continuation.status});
+    std.debug.print("result: {any}\n", .{continuation.command.write.result});
 
     std.debug.print("Hello from a dummy function\n", .{});
 }
