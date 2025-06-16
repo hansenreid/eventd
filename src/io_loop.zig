@@ -2,10 +2,12 @@ const std = @import("std");
 const DoublyLinkedList = std.DoublyLinkedList;
 const assert = std.debug.assert;
 const tracy = @import("tracy.zig");
+const RingBuffer = std.RingBuffer;
 
 const io_impl = @import("io.zig");
 const IO = io_impl.IO;
 const Command = io_impl.Command;
+const SubmitError = io_impl.SubmitError;
 
 pub const IOLoop = @This();
 pub const callback_t: type = *const fn (context: *anyopaque) void;
@@ -69,6 +71,12 @@ pub fn tick(self: *IOLoop) void {
 fn handle_submitted(self: *IOLoop, c: *Continuation) void {
     switch (c.command.*) {
         .write => self.io.write(c.command, &c.status),
+        .read => self.io.read(c.command, &c.status) catch |err| {
+            switch (err) {
+                SubmitError.TryAgainLater => return,
+                else => unreachable,
+            }
+        },
     }
 }
 

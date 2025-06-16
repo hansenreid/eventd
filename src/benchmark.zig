@@ -18,7 +18,7 @@ pub fn main() !void {
     std.debug.print("Seed: {x}\n", .{seed});
 
     const rand = prng.random();
-    var io = IO.init();
+    var io = try IO.init();
 
     var loop = IOLoop.init(&io);
     var events: usize = 0;
