@@ -15,11 +15,6 @@ pub const Command = union(enum) {
     write: WriteCmd,
 };
 
-pub const Cmd = struct {
-    data: struct {},
-    result: struct {},
-};
-
 pub fn cmd(data_t: type, result_t: type) type {
     return struct {
         const this = @This();
@@ -34,7 +29,10 @@ pub fn cmd(data_t: type, result_t: type) type {
     };
 }
 
-pub const WriteCmd = cmd(WriteData, anyerror!WriteResult);
+const WriteError = error{
+    Unexpected,
+};
+pub const WriteCmd = cmd(WriteData, WriteError!WriteResult);
 pub const WriteData = struct {
     fd: usize,
     buffer: []const u8,

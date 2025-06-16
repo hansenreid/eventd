@@ -1,6 +1,5 @@
 const std = @import("std");
 const IOLoop = @import("io_loop.zig");
-const tracy = @import("tracy.zig");
 
 const io_impl = @import("io.zig");
 const IO = io_impl.IO;
@@ -14,9 +13,6 @@ fn dummy(context: *anyopaque) void {
 }
 
 pub fn main() !void {
-    // tracy.setThreadName("Main");
-    // defer tracy.message("Graceful main thread exit", .{});
-
     const allocator = std.heap.page_allocator;
 
     const seed: u64 = 0x3b5f92f093d3071b;
@@ -32,8 +28,7 @@ pub fn main() !void {
     var events: usize = 0;
 
     var count: usize = 0;
-    while (count < 10_000) {
-        tracy.frameMark();
+    while (count < 1_000_000) {
         for (0..rand.int(u4)) |_| {
             const buffer: [256]u8 = undefined;
 

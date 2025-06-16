@@ -45,6 +45,7 @@ pub fn init(allocator: Allocator, io: *IO) IOLoop {
 
 pub fn tick(self: *IOLoop) !void {
     self.assert_invariants();
+    tracy.frameMark();
 
     var node = self.continuations.first;
     var count: usize = 0;
