@@ -1,7 +1,6 @@
 const std = @import("std");
 const DoublyLinkedList = std.DoublyLinkedList;
 const assert = std.debug.assert;
-const Allocator = std.mem.Allocator;
 const tracy = @import("tracy.zig");
 
 const io_impl = @import("io.zig");
@@ -11,7 +10,6 @@ const Command = io_impl.Command;
 pub const IOLoop = @This();
 pub const callback_t: type = *const fn (context: *anyopaque) void;
 
-allocator: Allocator,
 io: *IO,
 count: u32,
 continuations: DoublyLinkedList,
@@ -24,7 +22,7 @@ fn assert_invariants(self: *IOLoop) void {
     _ = self;
 }
 
-pub fn init(allocator: Allocator, io: *IO) IOLoop {
+pub fn init(io: *IO) IOLoop {
     var unused: DoublyLinkedList = .{};
     for (&list) |*c| {
         c.node = .{};
@@ -32,7 +30,6 @@ pub fn init(allocator: Allocator, io: *IO) IOLoop {
     }
 
     var loop = IOLoop{
-        .allocator = allocator,
         .io = io,
         .count = 0,
         .continuations = .{},
@@ -43,7 +40,7 @@ pub fn init(allocator: Allocator, io: *IO) IOLoop {
     return loop;
 }
 
-pub fn tick(self: *IOLoop) !void {
+pub fn tick(self: *IOLoop) void {
     self.assert_invariants();
     tracy.frameMark();
 

@@ -5,16 +5,12 @@ const io_impl = @import("io.zig");
 const IO = io_impl.IO;
 const Command = io_impl.Command;
 
-const options = @import("build_options");
-
 fn dummy(context: *anyopaque) void {
     const continuation: *IOLoop.Continuation = @ptrCast(@alignCast(context));
     _ = continuation;
 }
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
-
     const seed: u64 = 0x3b5f92f093d3071b;
     // try std.posix.getrandom(std.mem.asBytes(&seed));
     var prng = std.Random.DefaultPrng.init(seed);
@@ -24,7 +20,7 @@ pub fn main() !void {
     const rand = prng.random();
     var io = IO.init();
 
-    var loop = IOLoop.init(allocator, &io);
+    var loop = IOLoop.init(&io);
     var events: usize = 0;
 
     var count: usize = 0;
@@ -46,18 +42,14 @@ pub fn main() !void {
 
             events += 1;
         }
-        loop.tick() catch {
-            unreachable;
-        };
+        loop.tick();
 
         count += 1;
     }
 
     var count2: usize = 0;
     while (count2 < 200) {
-        loop.tick() catch {
-            unreachable;
-        };
+        loop.tick();
 
         count2 += 1;
     }

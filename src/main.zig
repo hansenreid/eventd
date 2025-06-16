@@ -24,12 +24,10 @@ fn dummy(context: *anyopaque) void {
 }
 
 export fn run() void {
-    const allocator = std.heap.page_allocator;
-
     const buffer: [256]u8 = undefined;
 
     var io = IO.init();
-    var loop = IOLoop.init(allocator, &io);
+    var loop = IOLoop.init(&io);
     const write_data = io_impl.WriteData{
         .buffer = &buffer,
         .fd = 0,
@@ -41,11 +39,6 @@ export fn run() void {
         unreachable;
     };
 
-    loop.tick() catch {
-        unreachable;
-    };
-
-    loop.tick() catch {
-        unreachable;
-    };
+    loop.tick();
+    loop.tick();
 }
