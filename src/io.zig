@@ -52,9 +52,19 @@ pub const ReadData = struct {
     fd: fd_t,
     buffer: []u8,
     offset: u64,
+
+    pub fn to_cmd(self: ReadData) Command {
+        return Command{ .read = ReadCmd.init(self) };
+    }
 };
 
-pub const ReadResult = struct {};
+pub const ReadResult = struct {
+    bytes_read: u31,
+
+    comptime {
+        assert(@sizeOf(ReadResult) == @sizeOf(u31));
+    }
+};
 
 const WriteError = error{
     Unexpected,

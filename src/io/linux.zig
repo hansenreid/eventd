@@ -1,5 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const expect = std.testing.expect;
 const linux = std.os.linux;
 const IoUring = linux.IoUring;
 const DoublyLinkedList = std.DoublyLinkedList;
@@ -42,18 +43,14 @@ pub fn init() !IO {
 }
 
 pub fn tick(self: *IO) void {
-    const submitted = self.ring.submit_and_wait(0) catch |err| {
+    _ = self.ring.submit_and_wait(0) catch |err| {
         std.debug.panic("Error submitting: {any}\n", .{err});
     };
-
-    std.debug.print("Submitted {d} requests\n", .{submitted});
 
     var cqes: [128]linux.io_uring_cqe = undefined;
     const completed = self.ring.copy_cqes(&cqes, 0) catch |err| {
         std.debug.panic("Error getting cqes: {any}\n", .{err});
     };
-
-    std.debug.print("Got {d} completed requests\n", .{completed});
 
     for (cqes[0..completed]) |cqe| {
         if (cqe.user_data == 0) continue;
@@ -70,6 +67,7 @@ fn handle_complete(self: *IO, op: *Op, result: i32) void {
     }
     op.status.* = .completed;
     self.ops.remove(&op.node);
+    self.count -= 1;
 }
 
 inline fn get_sqe(self: *IO) SubmitError!*linux.io_uring_sqe {
@@ -113,8 +111,76 @@ pub fn read(self: *IO, cmd: *Command, status: *Status) !void {
 }
 
 fn read_result(op: *Op, result: i32) void {
-    _ = op;
-    _ = result;
+    assert(op.cmd.* == .read);
+    if (result < 0) {
+        const err = @as(std.posix.E, @enumFromInt(-result));
+        std.debug.print("Error: {d}\n", .{err});
+        op.cmd.read.result = error.Unexpected;
+        return;
+    }
+
+    op.cmd.read.result = io_impl.ReadResult{
+        .bytes_read = @intCast(result),
+    };
+}
+
+test "can read from a file" {
+    var io = try IO.init();
+
+    var dir = try std.fs.openDirAbsolute("/tmp", .{});
+    defer dir.close();
+
+    const f = try dir.createFile("read_test.txt", .{ .read = true });
+    defer f.close();
+
+    const expected = "Hello World";
+    try f.writeAll(expected);
+
+    var buffer: [16]u8 = undefined;
+    const read_data = io_impl.ReadData{
+        .buffer = &buffer,
+        .fd = f.handle,
+        .offset = 0,
+    };
+
+    var cmd = read_data.to_cmd();
+    var status = Status.submitted;
+    try io.read(&cmd, &status);
+
+    var buffer_offset: [16]u8 = undefined;
+    const read_data_offset = io_impl.ReadData{
+        .buffer = &buffer_offset,
+        .fd = f.handle,
+        .offset = 6,
+    };
+
+    var cmd_offset = read_data_offset.to_cmd();
+    var status_offset = Status.submitted;
+    try io.read(&cmd_offset, &status_offset);
+
+    var count: usize = 0;
+    while (status != .completed or status_offset != .completed) : (count += 1) {
+        if (count > 5) {
+            return error.ReadTookTooLong;
+        }
+
+        std.time.sleep(10 * std.time.ns_per_ms);
+        io.tick();
+    }
+
+    if (cmd.read.result == null or cmd_offset.read.result == null) {
+        return error.NoResult;
+    }
+
+    const result = try cmd.read.result.?;
+    const msg = buffer[0..result.bytes_read];
+    try expect(std.mem.eql(u8, msg, expected));
+
+    const result_offset = try cmd_offset.read.result.?;
+    const msg_offset = buffer_offset[0..result_offset.bytes_read];
+    try expect(std.mem.eql(u8, msg_offset, "World"));
+
+    try dir.deleteFile("read_test.txt");
 }
 
 pub fn write(self: *IO, cmd: *Command, status: *Status) void {
