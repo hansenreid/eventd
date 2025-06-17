@@ -12,7 +12,6 @@ const SubmitError = io_impl.SubmitError;
 
 pub const IO = @This();
 
-// TODO: Move to a different implementation?
 ring: IoUring,
 ops: DoublyLinkedList,
 unused: DoublyLinkedList,
@@ -65,6 +64,7 @@ fn handle_complete(self: *IO, op: *Op, result: i32) void {
         .read => read_result(op, result),
         .write => write_result(op, result),
     }
+
     op.status.* = .completed;
     self.ops.remove(&op.node);
     self.count -= 1;
@@ -73,14 +73,14 @@ fn handle_complete(self: *IO, op: *Op, result: i32) void {
 inline fn get_sqe(self: *IO) SubmitError!*linux.io_uring_sqe {
     return self.ring.get_sqe() catch |err| {
         switch (err) {
-            error.SubmissionQueueFull => return SubmitError.TryAgainLater,
+            error.SubmissionQueueFull => return SubmitError.Retry,
         }
     };
 }
 
 inline fn add_op(self: *IO, cmd: *Command, status: *Status) SubmitError!*Op {
     const node = self.unused.pop() orelse {
-        return SubmitError.TryAgainLater;
+        return SubmitError.Retry;
     };
 
     var op: *Op = @fieldParentPtr("node", node);
@@ -99,9 +99,9 @@ pub fn log(self: *IO, msg: []const u8) void {
     std.debug.print("{s}\n", .{msg});
 }
 
-pub fn read(self: *IO, cmd: *Command, status: *Status) !void {
+pub fn read(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
     assert(cmd.* == .read);
-    assert(status.* == Status.submitted);
+    assert(status.* == Status.queued);
 
     const data = cmd.read.data;
     const sqe = try self.get_sqe();
@@ -112,16 +112,43 @@ pub fn read(self: *IO, cmd: *Command, status: *Status) !void {
 
 fn read_result(op: *Op, result: i32) void {
     assert(op.cmd.* == .read);
+
     if (result < 0) {
         const err = @as(std.posix.E, @enumFromInt(-result));
-        std.debug.print("Error: {d}\n", .{err});
-        op.cmd.read.result = error.Unexpected;
+
+        op.cmd.read.result = switch (err) {
+            .AGAIN => error.Retry,
+            .INTR => error.Retry,
+            .BADF => error.BadFileDescriptor,
+            .ISDIR => error.IsDirectory,
+            .NOBUFS => error.ResourceExhausted,
+            .NOMEM => error.ResourceExhausted,
+            .SPIPE => error.Unseekable,
+            else => error.Unexpected,
+        };
+
         return;
     }
 
     op.cmd.read.result = io_impl.ReadResult{
         .bytes_read = @intCast(result),
     };
+}
+
+pub fn write(self: *IO, cmd: *Command, status: *Status) void {
+    _ = self;
+
+    assert(cmd.* == .write);
+    assert(status.* == Status.queued);
+
+    status.* = .completed;
+    cmd.write.result = io_impl.WriteResult{ .bytes_read = 10 };
+    std.debug.print("Hello from write impl\n", .{});
+}
+
+fn write_result(op: *Op, result: i32) void {
+    _ = op;
+    _ = result;
 }
 
 test "can read from a file" {
@@ -144,7 +171,7 @@ test "can read from a file" {
     };
 
     var cmd = read_data.to_cmd();
-    var status = Status.submitted;
+    var status = Status.queued;
     try io.read(&cmd, &status);
 
     var buffer_offset: [16]u8 = undefined;
@@ -155,7 +182,7 @@ test "can read from a file" {
     };
 
     var cmd_offset = read_data_offset.to_cmd();
-    var status_offset = Status.submitted;
+    var status_offset = Status.queued;
     try io.read(&cmd_offset, &status_offset);
 
     var count: usize = 0;
@@ -181,20 +208,4 @@ test "can read from a file" {
     try expect(std.mem.eql(u8, msg_offset, "World"));
 
     try dir.deleteFile("read_test.txt");
-}
-
-pub fn write(self: *IO, cmd: *Command, status: *Status) void {
-    _ = self;
-
-    assert(cmd.* == .write);
-    assert(status.* == Status.submitted);
-
-    status.* = .completed;
-    cmd.write.result = io_impl.WriteResult{ .bytes_read = 10 };
-    std.debug.print("Hello from write impl\n", .{});
-}
-
-fn write_result(op: *Op, result: i32) void {
-    _ = op;
-    _ = result;
 }

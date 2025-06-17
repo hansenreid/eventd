@@ -5,6 +5,7 @@ const assert = std.debug.assert;
 const io_impl = @import("../io.zig");
 const Command = io_impl.Command;
 const Status = @import("../io_loop.zig").Continuation.Status;
+const SubmitError = io_impl.SubmitError;
 
 pub const IO = @This();
 
@@ -23,7 +24,7 @@ const Ops = struct {
     count: u8,
 };
 
-pub fn init() IO {
+pub fn init() !IO {
     const seed: u64 = 0x3b5f92f093d3071b;
     // try std.posix.getrandom(std.mem.asBytes(&seed));
     var prng = std.Random.DefaultPrng.init(seed);
@@ -72,13 +73,39 @@ pub fn complete(self: *IO, op: *Ops) void {
     self.count -= 1;
 
     switch (op.cmd.*) {
+        .read => read_result(op.cmd),
         .write => write_result(op.cmd),
     }
 }
 
+pub fn read(self: *IO, cmd: *io_impl.Command, status: *Status) SubmitError!void {
+    assert(cmd.* == .read);
+    assert(status.* == Status.queued);
+
+    const node = self.unused.pop() orelse {
+        // If we don't have any unused space, don't mark as .waiting
+        // so that it gets resubmitted on the next tick
+        return;
+    };
+
+    var op: *Ops = @fieldParentPtr("node", node);
+    op.count = 0;
+    op.status = status;
+    op.cmd = cmd;
+
+    self.io_ops.append(&op.node);
+    status.* = .waiting;
+    self.count += 1;
+}
+
+pub fn read_result(cmd: *io_impl.Command) void {
+    assert(cmd.* == .read);
+    cmd.read.result = io_impl.ReadResult{ .bytes_read = 10 };
+}
+
 pub fn write(self: *IO, cmd: *io_impl.Command, status: *Status) void {
     assert(cmd.* == .write);
-    assert(status.* == Status.submitted);
+    assert(status.* == Status.queued);
 
     const node = self.unused.pop() orelse {
         // If we don't have any unused space, don't mark as .waiting

@@ -17,10 +17,8 @@ const fd_t = switch (builtin.target.os.tag) {
     else => @compileError("IO is not supported for platform"),
 };
 
-// TODO: Better name for this or change Status.Submitted
-// since it means something different
 pub const SubmitError = error{
-    TryAgainLater,
+    Retry,
     Unexpected,
 };
 
@@ -44,6 +42,11 @@ pub fn cmd(data_t: type, result_t: type) type {
 }
 
 const ReadError = error{
+    Retry,
+    IsDirectory,
+    BadFileDescriptor,
+    Unseekable,
+    ResourceExhausted,
     Unexpected,
 };
 
@@ -53,8 +56,8 @@ pub const ReadData = struct {
     buffer: []u8,
     offset: u64,
 
-    pub fn to_cmd(self: ReadData) Command {
-        return Command{ .read = ReadCmd.init(self) };
+    pub fn to_cmd(data: ReadData) Command {
+        return Command{ .read = ReadCmd.init(data) };
     }
 };
 

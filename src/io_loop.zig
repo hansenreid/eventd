@@ -55,7 +55,7 @@ pub fn tick(self: *IOLoop) void {
         // the current node on completion
         node = n.next;
         switch (c.status) {
-            .submitted => self.handle_submitted(c),
+            .queued => self.handle_submitted(c),
             .waiting => {},
             .completed => self.handle_completed(c),
         }
@@ -73,7 +73,7 @@ fn handle_submitted(self: *IOLoop, c: *Continuation) void {
         .write => self.io.write(c.command, &c.status),
         .read => self.io.read(c.command, &c.status) catch |err| {
             switch (err) {
-                SubmitError.TryAgainLater => return,
+                SubmitError.Retry => return,
                 else => unreachable,
             }
         },
@@ -112,13 +112,13 @@ pub const Continuation = struct {
     callback: callback_t,
 
     pub const Status = enum {
-        submitted,
+        queued,
         waiting,
         completed,
     };
 
     pub fn init(ptr: *Continuation, command: *Command, callback: callback_t) void {
-        ptr.status = .submitted;
+        ptr.status = .queued;
         ptr.command = command;
         ptr.callback = callback;
     }
