@@ -61,6 +61,7 @@ pub fn tick(self: *IO) void {
 
 fn handle_complete(self: *IO, op: *Op, result: i32) void {
     switch (op.cmd.*) {
+        .open => open_result(op, result),
         .read => read_result(op, result),
         .write => write_result(op, result),
     }
@@ -99,6 +100,54 @@ pub fn log(self: *IO, msg: []const u8) void {
     std.debug.print("{s}\n", .{msg});
 }
 
+pub fn open(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
+    assert(cmd.* == .open);
+    assert(status.* == Status.queued);
+
+    const data = cmd.open.data;
+    const sqe = try self.get_sqe();
+    sqe.prep_openat(data.dir_fd, data.path, data.flags, data.mode);
+    const op = try self.add_op(cmd, status);
+    sqe.user_data = @intFromPtr(op);
+}
+
+fn open_result(op: *Op, result: i32) void {
+    assert(op.cmd.* == .open);
+
+    if (result < 0) {
+        const err = @as(std.posix.E, @enumFromInt(-result));
+        op.cmd.open.result = switch (err) {
+            .ACCES => error.AccessDenied,
+            .AGAIN => error.WouldBlock,
+            .BUSY => error.DeviceBusy,
+            .EXIST => error.PathAlreadyExists,
+            .FBIG => error.FileTooBig,
+            .INTR => error.Retry,
+            .ISDIR => error.IsDirectory,
+            .LOOP => error.TooManySymLinks,
+            .MFILE => error.TooManyOpenFiles,
+            .NAMETOOLONG => error.NameTooLong,
+            .NFILE => error.TooManyOpenFiles,
+            .NODEV => error.NoDevice,
+            .NOENT => error.FileNotFound,
+            .NOMEM => error.ResourceExhausted,
+            .NOSPC => error.NoSpaceLeft,
+            .NOTDIR => error.NotDirectory,
+            .OPNOTSUPP => error.FileLocksNotSupported,
+            .OVERFLOW => error.FileTooBig,
+            .PERM => error.AccessDenied,
+            .TXTBSY => error.FileBusy,
+            else => error.Unexpected,
+        };
+
+        return;
+    }
+
+    op.cmd.open.result = io_impl.OpenResult{
+        .fd = @as(io_impl.fd_t, result),
+    };
+}
+
 pub fn read(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
     assert(cmd.* == .read);
     assert(status.* == Status.queued);
@@ -118,8 +167,8 @@ fn read_result(op: *Op, result: i32) void {
 
         op.cmd.read.result = switch (err) {
             .AGAIN => error.Retry,
-            .INTR => error.Retry,
             .BADF => error.BadFileDescriptor,
+            .INTR => error.Retry,
             .ISDIR => error.IsDirectory,
             .NOBUFS => error.ResourceExhausted,
             .NOMEM => error.ResourceExhausted,
@@ -149,6 +198,71 @@ pub fn write(self: *IO, cmd: *Command, status: *Status) void {
 fn write_result(op: *Op, result: i32) void {
     _ = op;
     _ = result;
+}
+
+test "can open directories and files" {
+    var io = try IO.init();
+
+    var dir = try std.fs.openDirAbsolute("/tmp", .{});
+    const f = try dir.createFile("open_test.txt", .{ .read = true });
+    f.close();
+    dir.close();
+
+    const open_dir_data = io_impl.OpenData{
+        .dir_fd = 0,
+        .path = "/tmp",
+        .flags = .{},
+        .mode = 744,
+    };
+
+    var cmd_dir = open_dir_data.to_cmd();
+    var status_dir = Status.queued;
+    try io.open(&cmd_dir, &status_dir);
+
+    var count: usize = 0;
+    while (status_dir != .completed) : (count += 1) {
+        if (count > 5) {
+            return error.ReadTookTooLong;
+        }
+
+        std.time.sleep(10 * std.time.ns_per_ms);
+        io.tick();
+    }
+
+    if (cmd_dir.open.result == null) {
+        return error.NoResult;
+    }
+
+    const result_dir = try cmd_dir.open.result.?;
+    try expect(result_dir.fd > 0);
+
+    const open_file_data = io_impl.OpenData{
+        .dir_fd = 0,
+        .path = "/tmp",
+        .flags = .{},
+        .mode = 744,
+    };
+
+    var cmd_file = open_file_data.to_cmd();
+    var status_file = Status.queued;
+    try io.open(&cmd_file, &status_file);
+
+    count = 0;
+    while (status_file != .completed) : (count += 1) {
+        if (count > 5) {
+            return error.ReadTookTooLong;
+        }
+
+        std.time.sleep(10 * std.time.ns_per_ms);
+        io.tick();
+    }
+
+    if (cmd_file.open.result == null) {
+        return error.NoResult;
+    }
+
+    const result_file = try cmd_file.open.result.?;
+    try expect(result_file.fd > 0);
 }
 
 test "can read from a file" {

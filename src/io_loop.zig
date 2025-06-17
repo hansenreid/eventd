@@ -70,6 +70,12 @@ pub fn tick(self: *IOLoop) void {
 
 fn handle_submitted(self: *IOLoop, c: *Continuation) void {
     switch (c.command.*) {
+        .open => self.io.open(c.command, &c.status) catch |err| {
+            switch (err) {
+                SubmitError.Retry => return,
+                else => unreachable,
+            }
+        },
         .write => self.io.write(c.command, &c.status),
         .read => self.io.read(c.command, &c.status) catch |err| {
             switch (err) {
