@@ -26,7 +26,9 @@ fn dummy(context: *anyopaque) void {
 export fn run() void {
     const buffer: [256]u8 = undefined;
 
-    var io = IO.init();
+    var io = IO.init() catch {
+        unreachable;
+    };
     var loop = IOLoop.init(&io);
     const write_data = io_impl.WriteData{
         .buffer = &buffer,
