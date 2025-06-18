@@ -69,21 +69,18 @@ pub fn tick(self: *IOLoop) void {
 }
 
 fn handle_submitted(self: *IOLoop, c: *Continuation) void {
-    switch (c.command.*) {
-        .open => self.io.open(c.command, &c.status) catch |err| {
-            switch (err) {
-                SubmitError.Retry => return,
-                else => unreachable,
-            }
-        },
+    const err = switch (c.command.*) {
+        .open => self.io.open(c.command, &c.status),
         .write => self.io.write(c.command, &c.status),
-        .read => self.io.read(c.command, &c.status) catch |err| {
-            switch (err) {
-                SubmitError.Retry => return,
-                else => unreachable,
-            }
-        },
-    }
+        .read => self.io.read(c.command, &c.status),
+    };
+
+    err catch |e| {
+        switch (e) {
+            error.Retry => return,
+            else => std.debug.panic("Error submitting: {any}\n", .{e}),
+        }
+    };
 }
 
 fn handle_completed(self: *IOLoop, continuation: *Continuation) void {

@@ -184,20 +184,46 @@ fn read_result(op: *Op, result: i32) void {
     };
 }
 
-pub fn write(self: *IO, cmd: *Command, status: *Status) void {
-    _ = self;
-
+pub fn write(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
     assert(cmd.* == .write);
     assert(status.* == Status.queued);
 
-    status.* = .completed;
-    cmd.write.result = io_impl.WriteResult{ .bytes_read = 10 };
-    std.debug.print("Hello from write impl\n", .{});
+    const data = cmd.write.data;
+    const sqe = try self.get_sqe();
+    sqe.prep_write(data.fd, data.buffer, data.offset);
+    const op = try self.add_op(cmd, status);
+    sqe.user_data = @intFromPtr(op);
 }
 
 fn write_result(op: *Op, result: i32) void {
-    _ = op;
-    _ = result;
+    assert(op.cmd.* == .write);
+
+    if (result < 0) {
+        const err = @as(std.posix.E, @enumFromInt(-result));
+
+        op.cmd.write.result = switch (err) {
+            .AGAIN => error.WouldBlock,
+            .BADF => error.NotOpenForWriting,
+            .DQUOT => error.DiskQuotaExceeded,
+            .FBIG => error.FileTooLarge,
+            .INTR => error.Retry,
+            .INVAL => error.InvalidArgument,
+            .IO => error.InputOutput,
+            .NOSPC => error.NoSpaceLeft,
+            .NXIO => error.NoSuchDevice,
+            .OVERFLOW => error.Overflow,
+            .PERM => error.AccessDenied,
+            .PIPE => error.BrokenPipe,
+            .SPIPE => error.InvalidSeek,
+            else => error.Unexpected,
+        };
+
+        return;
+    }
+
+    op.cmd.write.result = io_impl.WriteResult{
+        .bytes_written = @intCast(result),
+    };
 }
 
 test "can open directories and files" {
@@ -322,4 +348,62 @@ test "can read from a file" {
     try expect(std.mem.eql(u8, msg_offset, "World"));
 
     try dir.deleteFile("read_test.txt");
+}
+test "can write to a file" {
+    var io = try IO.init();
+
+    var dir = try std.fs.openDirAbsolute("/tmp", .{});
+    defer dir.close();
+
+    const f = try dir.createFile("write_test.txt", .{ .read = true });
+    defer f.close();
+
+    const buffer: []const u8 = "Hello ";
+    const write_data = io_impl.WriteData{
+        .fd = f.handle,
+        .buffer = buffer,
+        .offset = 0,
+    };
+
+    var cmd = write_data.to_cmd();
+    var status = Status.queued;
+    try io.write(&cmd, &status);
+
+    const buffer_offset: []const u8 = "World";
+    const write_data_offset = io_impl.WriteData{
+        .buffer = buffer_offset,
+        .fd = f.handle,
+        .offset = 6,
+    };
+
+    var cmd_offset = write_data_offset.to_cmd();
+    var status_offset = Status.queued;
+    try io.write(&cmd_offset, &status_offset);
+
+    var count: usize = 0;
+    while (status != .completed or status_offset != .completed) : (count += 1) {
+        if (count > 5) {
+            return error.WriteTookTooLong;
+        }
+
+        std.time.sleep(10 * std.time.ns_per_ms);
+        io.tick();
+    }
+
+    if (cmd.write.result == null or cmd_offset.write.result == null) {
+        return error.NoResult;
+    }
+
+    const result = try cmd.write.result.?;
+    try expect(result.bytes_written == 6);
+
+    const result_offset = try cmd_offset.write.result.?;
+    try expect(result_offset.bytes_written == 5);
+
+    var result_buffer: [11]u8 = undefined;
+    const bytes_read = try f.readAll(&result_buffer);
+    try expect(bytes_read == 11);
+    try expect(std.mem.eql(u8, &result_buffer, "Hello World"));
+
+    try dir.deleteFile("write_test.txt");
 }

@@ -31,6 +31,7 @@ pub fn main() !void {
             const write_data = io_impl.WriteData{
                 .buffer = &buffer,
                 .fd = 0,
+                .offset = 0,
             };
 
             var write = write_data.to_cmd();

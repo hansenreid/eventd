@@ -119,14 +119,28 @@ const ReadError = error{
 };
 
 const WriteError = error{
+    AccessDenied,
+    BrokenPipe,
+    DiskQuotaExceeded,
+    FileTooLarge,
+    InputOutput,
+    InvalidArgument,
+    InvalidSeek,
+    NoSpaceLeft,
+    NoSuchDevice,
+    NotOpenForWriting,
+    Overflow,
+    Retry,
     Unexpected,
+    WouldBlock,
 };
 
 pub const WriteCmd = cmd(WriteData, WriteError!WriteResult);
 
 pub const WriteData = struct {
-    fd: usize,
+    fd: fd_t,
     buffer: []const u8,
+    offset: u64,
 
     pub fn to_cmd(self: WriteData) Command {
         return Command{ .write = WriteCmd.init(self) };
@@ -134,9 +148,9 @@ pub const WriteData = struct {
 };
 
 pub const WriteResult = struct {
-    bytes_read: usize,
+    bytes_written: u31,
 
     comptime {
-        assert(@sizeOf(WriteResult) == @sizeOf(usize));
+        assert(@sizeOf(WriteResult) == @sizeOf(u31));
     }
 };
