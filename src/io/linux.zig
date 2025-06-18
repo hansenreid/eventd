@@ -4,6 +4,7 @@ const expect = std.testing.expect;
 const linux = std.os.linux;
 const IoUring = linux.IoUring;
 const DoublyLinkedList = std.DoublyLinkedList;
+const tracy = @import("../tracy.zig");
 
 const io_impl = @import("../io.zig");
 const Command = io_impl.Command;
@@ -42,21 +43,30 @@ pub fn init() !IO {
 }
 
 pub fn tick(self: *IO) void {
+    var trace = tracy.traceNamed(@src(), "IO Tick");
+    defer trace.end();
+
+    var submit_trace = tracy.traceNamed(@src(), "Ring Submit");
     _ = self.ring.submit_and_wait(0) catch |err| {
         std.debug.panic("Error submitting: {any}\n", .{err});
     };
+    submit_trace.end();
 
+    var completed_trace = tracy.traceNamed(@src(), "Ring Copy CQES");
     var cqes: [128]linux.io_uring_cqe = undefined;
     const completed = self.ring.copy_cqes(&cqes, 0) catch |err| {
         std.debug.panic("Error getting cqes: {any}\n", .{err});
     };
+    completed_trace.end();
 
+    var cqe_trace = tracy.traceNamed(@src(), "cqe loop");
     for (cqes[0..completed]) |cqe| {
         if (cqe.user_data == 0) continue;
 
         const op: *Op = @ptrFromInt(cqe.user_data);
         self.handle_complete(op, cqe.res);
     }
+    cqe_trace.end();
 }
 
 fn handle_complete(self: *IO, op: *Op, result: i32) void {
@@ -69,6 +79,7 @@ fn handle_complete(self: *IO, op: *Op, result: i32) void {
 
     op.status.* = .completed;
     self.ops.remove(&op.node);
+    self.unused.append(&op.node);
     self.count -= 1;
 }
 

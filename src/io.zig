@@ -3,6 +3,7 @@ const std = @import("std");
 const options = @import("build_options");
 const assert = std.debug.assert;
 const linux = std.os.linux;
+const tracy = @import("tracy.zig");
 
 const IO_Linux = @import("io/linux.zig").IO;
 const IO_Test = @import("io/test.zig").IO;

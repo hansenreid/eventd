@@ -14,8 +14,9 @@ pub fn main() !void {
     run();
 }
 
-fn dummy(context: *anyopaque) void {
-    const continuation: *IOLoop.Continuation = @ptrCast(@alignCast(context));
+fn dummy(context: *anyopaque, continuation: *IOLoop.Continuation) void {
+    const loop: *IOLoop = @ptrCast(@alignCast(context));
+    _ = loop;
 
     std.debug.print("result: {any}\n", .{continuation.status});
     std.debug.print("result: {any}\n", .{continuation.command.write.result});
@@ -36,9 +37,9 @@ export fn run() void {
         .offset = 0,
     };
 
-    var write = write_data.to_cmd();
+    const write = write_data.to_cmd();
 
-    loop.enqueue(&write, dummy) catch {
+    loop.enqueue(write, dummy) catch {
         unreachable;
     };
 
