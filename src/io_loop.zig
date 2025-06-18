@@ -70,6 +70,7 @@ pub fn tick(self: *IOLoop) void {
 
 fn handle_submitted(self: *IOLoop, c: *Continuation) void {
     const err = switch (c.command.*) {
+        .close => self.io.close(c.command, &c.status),
         .open => self.io.open(c.command, &c.status),
         .write => self.io.write(c.command, &c.status),
         .read => self.io.read(c.command, &c.status),
