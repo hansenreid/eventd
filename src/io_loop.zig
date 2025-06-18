@@ -7,18 +7,17 @@ const RingBuffer = std.RingBuffer;
 const io_impl = @import("io.zig");
 const IO = io_impl.IO;
 const Command = io_impl.Command;
-const SubmitError = io_impl.SubmitError;
 
 pub const IOLoop = @This();
-pub const callback_t: type = *const fn (context: *anyopaque) void;
 
 io: *IO,
 count: u32,
 continuations: DoublyLinkedList,
 unused: DoublyLinkedList,
 
-const LIST_SIZE = 1000;
+const LIST_SIZE = 2000;
 var list: [LIST_SIZE]Continuation = undefined;
+var retry_count: usize = 0;
 
 fn assert_invariants(self: *IOLoop) void {
     _ = self;
@@ -44,7 +43,9 @@ pub fn init(io: *IO) IOLoop {
 
 pub fn tick(self: *IOLoop) void {
     self.assert_invariants();
-    tracy.frameMark();
+    tracy.frameMarkNamed("IO Loop Tick");
+    var trace = tracy.traceNamed(@src(), "IO Loop Tick");
+    defer trace.end();
 
     var node = self.continuations.first;
     var count: usize = 0;
@@ -69,29 +70,46 @@ pub fn tick(self: *IOLoop) void {
 }
 
 fn handle_submitted(self: *IOLoop, c: *Continuation) void {
-    const err = switch (c.command.*) {
-        .close => self.io.close(c.command, &c.status),
-        .open => self.io.open(c.command, &c.status),
-        .write => self.io.write(c.command, &c.status),
-        .read => self.io.read(c.command, &c.status),
+    var trace = tracy.traceNamed(@src(), "handle submitted");
+    defer trace.end();
+
+    const err = switch (c.command) {
+        .close => self.io.close(&c.command, &c.status),
+        .open => self.io.open(&c.command, &c.status),
+        .write => self.io.write(&c.command, &c.status),
+        .read => self.io.read(&c.command, &c.status),
     };
 
     err catch |e| {
+        var err_trace = tracy.traceNamed(@src(), "handle retry");
+
         switch (e) {
-            error.Retry => return,
+            error.Retry => {
+                retry_count += 1;
+                c.status = .queued;
+            },
             else => std.debug.panic("Error submitting: {any}\n", .{e}),
         }
+
+        err_trace.end();
     };
 }
 
 fn handle_completed(self: *IOLoop, continuation: *Continuation) void {
-    continuation.callback(continuation);
+    var trace = tracy.traceNamed(@src(), "handle completed");
+    defer trace.end();
+
+    continuation.callback(self, continuation);
     self.continuations.remove(&continuation.node);
     self.unused.append(&continuation.node);
     self.count -= 1;
 }
 
-pub fn enqueue(self: *IOLoop, command: *Command, callback: callback_t) !void {
+pub fn enqueue(
+    self: *IOLoop,
+    command: Command,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+) !void {
     self.assert_invariants();
 
     const node = self.unused.pop() orelse {
@@ -110,10 +128,10 @@ pub fn enqueue(self: *IOLoop, command: *Command, callback: callback_t) !void {
 }
 
 pub const Continuation = struct {
-    command: *Command,
+    command: Command,
     status: Status,
     node: DoublyLinkedList.Node,
-    callback: callback_t,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
 
     pub const Status = enum {
         queued,
@@ -121,7 +139,11 @@ pub const Continuation = struct {
         completed,
     };
 
-    pub fn init(ptr: *Continuation, command: *Command, callback: callback_t) void {
+    pub fn init(
+        ptr: *Continuation,
+        command: Command,
+        callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+    ) void {
         ptr.status = .queued;
         ptr.command = command;
         ptr.callback = callback;
