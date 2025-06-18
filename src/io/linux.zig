@@ -61,6 +61,7 @@ pub fn tick(self: *IO) void {
 
 fn handle_complete(self: *IO, op: *Op, result: i32) void {
     switch (op.cmd.*) {
+        .close => close_result(op, result),
         .open => open_result(op, result),
         .read => read_result(op, result),
         .write => write_result(op, result),
@@ -98,6 +99,38 @@ pub fn log(self: *IO, msg: []const u8) void {
     _ = self;
 
     std.debug.print("{s}\n", .{msg});
+}
+
+pub fn close(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
+    assert(cmd.* == .close);
+    assert(status.* == Status.queued);
+
+    const data = cmd.close.data;
+    const sqe = try self.get_sqe();
+    sqe.prep_close(data.fd);
+    const op = try self.add_op(cmd, status);
+    sqe.user_data = @intFromPtr(op);
+}
+
+fn close_result(op: *Op, result: i32) void {
+    assert(op.cmd.* == .close);
+
+    if (result < 0) {
+        const err = @as(std.posix.E, @enumFromInt(-result));
+        op.cmd.close.result = switch (err) {
+            .BADF => error.FileDescriptorInvalid,
+            .DQUOT => error.DiskQuota,
+            .IO => error.InputOutput,
+            .NOSPC => error.NoSpaceLeft,
+            else => error.Unexpected,
+        };
+
+        return;
+    }
+
+    assert(result == 0);
+
+    op.cmd.close.result = {};
 }
 
 pub fn open(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
@@ -289,6 +322,52 @@ test "can open directories and files" {
 
     const result_file = try cmd_file.open.result.?;
     try expect(result_file.fd > 0);
+}
+
+test "can close a file or directory" {
+    var io = try IO.init();
+    var dir = try std.fs.openDirAbsolute("/tmp", .{});
+    const f = try dir.createFile("close_test.txt", .{ .read = true });
+
+    const close_file_data = io_impl.CloseData{
+        .fd = f.handle,
+    };
+
+    var cmd_file = close_file_data.to_cmd();
+    var status_file = Status.queued;
+    try io.close(&cmd_file, &status_file);
+
+    const close_dir_data = io_impl.CloseData{
+        .fd = dir.fd,
+    };
+
+    var cmd_dir = close_dir_data.to_cmd();
+    var status_dir = Status.queued;
+    try io.close(&cmd_dir, &status_dir);
+
+    var count: usize = 0;
+    while (status_file != .completed or status_dir != .completed) : (count += 1) {
+        if (count > 5) {
+            return error.ReadTookTooLong;
+        }
+
+        std.time.sleep(10 * std.time.ns_per_ms);
+        io.tick();
+    }
+
+    if (cmd_file.close.result == null or cmd_dir.close.result == null) {
+        return error.NoResult;
+    }
+
+    const result_file = try cmd_file.close.result.?;
+    try expect(result_file == {});
+
+    const result_dir = try cmd_dir.close.result.?;
+    try expect(result_dir == {});
+
+    var dir_cleanup = try std.fs.openDirAbsolute("/tmp", .{});
+    try dir_cleanup.deleteFile("close_test.txt");
+    defer dir_cleanup.close();
 }
 
 test "can read from a file" {

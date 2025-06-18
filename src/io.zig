@@ -34,6 +34,7 @@ pub const SubmitError = error{
 };
 
 pub const Command = union(enum) {
+    close: CloseCmd,
     open: OpenCmd,
     read: ReadCmd,
     write: WriteCmd,
@@ -152,5 +153,22 @@ pub const WriteResult = struct {
 
     comptime {
         assert(@sizeOf(WriteResult) == @sizeOf(u31));
+    }
+};
+
+const CloseError = error{
+    FileDescriptorInvalid,
+    DiskQuota,
+    InputOutput,
+    NoSpaceLeft,
+    Unexpected,
+};
+
+pub const CloseCmd = cmd(CloseData, CloseError!void);
+pub const CloseData = struct {
+    fd: fd_t,
+
+    pub fn to_cmd(self: CloseData) Command {
+        return Command{ .close = CloseCmd.init(self) };
     }
 };
