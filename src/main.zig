@@ -32,7 +32,8 @@ export fn run() void {
     var loop = IOLoop.init(&io);
     const write_data = io_impl.WriteData{
         .buffer = &buffer,
-        .fd = 0,
+        .fd = 3,
+        .offset = 0,
     };
 
     var write = write_data.to_cmd();
