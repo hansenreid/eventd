@@ -13,28 +13,16 @@ pub const IOLoop = @This();
 io: *IO,
 count: u32,
 continuations: DoublyLinkedList,
-unused: DoublyLinkedList,
-
-const LIST_SIZE = 2000;
-var list: [LIST_SIZE]Continuation = undefined;
-var retry_count: usize = 0;
 
 fn assert_invariants(self: *IOLoop) void {
     _ = self;
 }
 
 pub fn init(io: *IO) IOLoop {
-    var unused: DoublyLinkedList = .{};
-    for (&list) |*c| {
-        c.node = .{};
-        unused.append(&c.node);
-    }
-
     var loop = IOLoop{
         .io = io,
         .count = 0,
         .continuations = .{},
-        .unused = unused,
     };
 
     loop.assert_invariants();
@@ -48,7 +36,6 @@ pub fn tick(self: *IOLoop) void {
     defer trace.end();
 
     var node = self.continuations.first;
-    var count: usize = 0;
     while (node) |n| {
         const c: *Continuation = @fieldParentPtr("node", n);
 
@@ -56,12 +43,10 @@ pub fn tick(self: *IOLoop) void {
         // the current node on completion
         node = n.next;
         switch (c.status) {
-            .queued => self.handle_submitted(c),
+            .queued => self.handle_queued(c),
             .waiting => {},
             .completed => self.handle_completed(c),
         }
-
-        count += 1;
     }
 
     self.io.tick();
@@ -69,15 +54,15 @@ pub fn tick(self: *IOLoop) void {
     self.assert_invariants();
 }
 
-fn handle_submitted(self: *IOLoop, c: *Continuation) void {
+fn handle_queued(self: *IOLoop, c: *Continuation) void {
     var trace = tracy.traceNamed(@src(), "handle submitted");
     defer trace.end();
 
     const err = switch (c.command) {
-        .close => self.io.close(&c.command, &c.status),
-        .open => self.io.open(&c.command, &c.status),
-        .write => self.io.write(&c.command, &c.status),
-        .read => self.io.read(&c.command, &c.status),
+        .close => self.io.close(c),
+        .open => self.io.open(c),
+        .write => self.io.write(c),
+        .read => self.io.read(c),
     };
 
     err catch |e| {
@@ -85,8 +70,8 @@ fn handle_submitted(self: *IOLoop, c: *Continuation) void {
 
         switch (e) {
             error.Retry => {
-                retry_count += 1;
                 c.status = .queued;
+                self.io.tick();
             },
             else => std.debug.panic("Error submitting: {any}\n", .{e}),
         }
@@ -101,27 +86,17 @@ fn handle_completed(self: *IOLoop, continuation: *Continuation) void {
 
     continuation.callback(self, continuation);
     self.continuations.remove(&continuation.node);
-    self.unused.append(&continuation.node);
     self.count -= 1;
 }
 
 pub fn enqueue(
     self: *IOLoop,
-    command: Command,
-    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
-) !void {
+    continuation: *Continuation,
+) void {
     self.assert_invariants();
+    assert(continuation.status == .queued);
 
-    const node = self.unused.pop() orelse {
-        return error.NoFreeContinuations;
-    };
-
-    var c: *Continuation = @fieldParentPtr("node", node);
-
-    c.init(command, callback);
-
-    self.continuations.append(&c.node);
-
+    self.continuations.append(&continuation.node);
     self.count += 1;
 
     self.assert_invariants();
@@ -149,3 +124,73 @@ pub const Continuation = struct {
         ptr.callback = callback;
     }
 };
+
+pub fn open(
+    self: *IOLoop,
+    dir_fd: IO.fd_t,
+    path: [*:0]const u8,
+    flags: IO.open_flags,
+    mode: IO.mode_t,
+    continuation: *Continuation,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+) void {
+    const data = io_impl.OpenData{
+        .dir_fd = dir_fd,
+        .path = path,
+        .flags = flags,
+        .mode = mode,
+    };
+
+    continuation.init(data.to_cmd(), callback);
+    self.enqueue(continuation);
+}
+
+pub fn read(
+    self: *IOLoop,
+    fd: IO.fd_t,
+    buffer: []u8,
+    offset: u64,
+    continuation: *Continuation,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+) void {
+    const data = io_impl.ReadData{
+        .fd = fd,
+        .buffer = buffer,
+        .offset = offset,
+    };
+
+    continuation.init(data.to_cmd(), callback);
+    self.enqueue(continuation);
+}
+
+pub fn write(
+    self: *IOLoop,
+    fd: IO.fd_t,
+    buffer: []u8,
+    offset: u64,
+    continuation: *Continuation,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+) void {
+    const data = io_impl.WriteData{
+        .fd = fd,
+        .buffer = buffer,
+        .offset = offset,
+    };
+
+    continuation.init(data.to_cmd(), callback);
+    self.enqueue(continuation);
+}
+
+pub fn close(
+    self: *IOLoop,
+    fd: IO.fd_t,
+    continuation: *Continuation,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+) void {
+    const data = io_impl.CloseData{
+        .fd = fd,
+    };
+
+    continuation.init(data.to_cmd(), callback);
+    self.enqueue(continuation);
+}

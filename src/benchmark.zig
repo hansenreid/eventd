@@ -12,12 +12,27 @@ const gb = 1073741824;
 const mb = 1048576;
 
 var buffer: [gb]u8 = undefined;
+var continuations: *[]IOLoop.Continuation = undefined;
 
 pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+    const num_continuations = try std.math.divExact(comptime_int, gb, mb);
+    var c: []IOLoop.Continuation = try allocator.alloc(IOLoop.Continuation, num_continuations + 1);
+    continuations = &c;
+
     var io = try IO.init();
 
     var loop = IOLoop.init(&io);
-    try read_from_rnd(&loop);
+
+    loop.open(
+        0,
+        "/home/reid/dev/personal/eventd/test.bin",
+        .{},
+        744,
+        &continuations.*[0],
+        open_rnd_callback,
+    );
+
     while (!done) {
         if (read >= gb) break;
         loop.tick();
@@ -28,19 +43,6 @@ pub fn main() !void {
     // try fd.writeAll(&buffer);
 }
 
-fn read_from_rnd(loop: *IOLoop) !void {
-    const open_data = io_impl.OpenData{
-        .dir_fd = 0,
-        .path = "/home/reid/dev/personal/eventd/test.bin",
-        .flags = .{},
-        .mode = 744,
-    };
-
-    const cmd = open_data.to_cmd();
-    try loop.enqueue(cmd, open_rnd_callback);
-}
-
-//TODO: Just deal with continuations instead of commands?
 fn open_rnd_callback(context: *anyopaque, continuation: *IOLoop.Continuation) void {
     assert(continuation.command == .open);
     assert(continuation.command.open.result != null);
@@ -57,20 +59,10 @@ fn open_rnd_callback(context: *anyopaque, continuation: *IOLoop.Continuation) vo
     var count: usize = 0;
     while (i < gb) {
         count += 1;
+        const c = &continuations.*[count];
 
         const next: usize = i + mb;
-        const read_data = io_impl.ReadData{
-            .buffer = buffer[i..next],
-            .fd = result.fd,
-            .offset = 0,
-        };
-
-        const cmd = read_data.to_cmd();
-        loop.enqueue(cmd, open_rnd_read_callback) catch |err| {
-            switch (err) {
-                error.NoFreeContinuations => std.debug.panic("No Free Continuations", .{}),
-            }
-        };
+        loop.read(result.fd, buffer[i..next], i, c, open_rnd_read_callback);
 
         i = next;
     }

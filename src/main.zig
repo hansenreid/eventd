@@ -25,23 +25,15 @@ fn dummy(context: *anyopaque, continuation: *IOLoop.Continuation) void {
 }
 
 export fn run() void {
-    const buffer: [256]u8 = undefined;
+    var buffer: [256]u8 = undefined;
 
     var io = IO.init() catch {
         unreachable;
     };
+
     var loop = IOLoop.init(&io);
-    const write_data = io_impl.WriteData{
-        .buffer = &buffer,
-        .fd = 3,
-        .offset = 0,
-    };
-
-    const write = write_data.to_cmd();
-
-    loop.enqueue(write, dummy) catch {
-        unreachable;
-    };
+    var c: IOLoop.Continuation = undefined;
+    loop.write(3, &buffer, 0, &c, dummy);
 
     loop.tick();
     loop.tick();

@@ -14,21 +14,6 @@ pub const IO = if (options.test_io) IO_Test else switch (builtin.target.os.tag) 
     else => @compileError("IO is not supported for platform"),
 };
 
-pub const fd_t = switch (builtin.target.os.tag) {
-    .linux => std.os.linux.fd_t,
-    else => @compileError("IO is not supported for platform"),
-};
-
-pub const open_flags = switch (builtin.target.os.tag) {
-    .linux => linux.O,
-    else => @compileError("IO is not supported for platform"),
-};
-
-pub const mode_t = switch (builtin.target.os.tag) {
-    .linux => linux.mode_t,
-    else => @compileError("IO is not supported for platform"),
-};
-
 pub const SubmitError = error{
     Retry,
     Unexpected,
@@ -57,10 +42,10 @@ pub fn cmd(data_t: type, result_t: type) type {
 
 pub const OpenCmd = cmd(OpenData, OpenError!OpenResult);
 pub const OpenData = struct {
-    dir_fd: fd_t,
+    dir_fd: IO.fd_t,
     path: [*:0]const u8,
-    flags: open_flags,
-    mode: mode_t,
+    flags: IO.open_flags,
+    mode: IO.mode_t,
 
     pub fn to_cmd(data: OpenData) Command {
         return Command{ .open = OpenCmd.init(data) };
@@ -68,7 +53,7 @@ pub const OpenData = struct {
 };
 
 pub const OpenResult = struct {
-    fd: fd_t,
+    fd: IO.fd_t,
 };
 
 pub const OpenError = error{
@@ -94,9 +79,10 @@ pub const OpenError = error{
 
 pub const ReadCmd = cmd(ReadData, ReadError!ReadResult);
 pub const ReadData = struct {
-    fd: fd_t,
+    fd: IO.fd_t,
     buffer: []u8,
     offset: u64,
+    steps: usize = 0,
 
     pub fn to_cmd(data: ReadData) Command {
         return Command{ .read = ReadCmd.init(data) };
@@ -140,7 +126,7 @@ const WriteError = error{
 pub const WriteCmd = cmd(WriteData, WriteError!WriteResult);
 
 pub const WriteData = struct {
-    fd: fd_t,
+    fd: IO.fd_t,
     buffer: []const u8,
     offset: u64,
 
@@ -167,7 +153,7 @@ const CloseError = error{
 
 pub const CloseCmd = cmd(CloseData, CloseError!void);
 pub const CloseData = struct {
-    fd: fd_t,
+    fd: IO.fd_t,
 
     pub fn to_cmd(self: CloseData) Command {
         return Command{ .close = CloseCmd.init(self) };
