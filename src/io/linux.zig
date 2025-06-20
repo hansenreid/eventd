@@ -8,36 +8,23 @@ const tracy = @import("../tracy.zig");
 
 const io_impl = @import("../io.zig");
 const Command = io_impl.Command;
-const Status = @import("../io_loop.zig").Continuation.Status;
+const IOLoop = @import("../io_loop.zig");
+const Continuation = IOLoop.Continuation;
+const Status = IOLoop.Continuation.Status;
 const SubmitError = io_impl.SubmitError;
 
 pub const IO = @This();
 
+pub const fd_t = linux.fd_t;
+pub const open_flags = linux.O;
+pub const mode_t = linux.mode_t;
+
 ring: IoUring,
-ops: DoublyLinkedList,
-unused: DoublyLinkedList,
 count: usize,
 
-const LIST_SIZE = 1000;
-var list: [LIST_SIZE]Op = undefined;
-
-const Op = struct {
-    node: DoublyLinkedList.Node,
-    status: *Status,
-    cmd: *io_impl.Command,
-};
-
 pub fn init() !IO {
-    var unused: DoublyLinkedList = .{};
-    for (&list) |*o| {
-        o.node = .{};
-        unused.append(&o.node);
-    }
-
     return .{
         .ring = try IoUring.init(128, 0),
-        .ops = .{},
-        .unused = unused,
         .count = 0,
     };
 }
@@ -63,23 +50,21 @@ pub fn tick(self: *IO) void {
     for (cqes[0..completed]) |cqe| {
         if (cqe.user_data == 0) continue;
 
-        const op: *Op = @ptrFromInt(cqe.user_data);
-        self.handle_complete(op, cqe.res);
+        const c: *Continuation = @ptrFromInt(cqe.user_data);
+        self.handle_complete(c, cqe.res);
     }
     cqe_trace.end();
 }
 
-fn handle_complete(self: *IO, op: *Op, result: i32) void {
-    switch (op.cmd.*) {
-        .close => close_result(op, result),
-        .open => open_result(op, result),
-        .read => read_result(op, result),
-        .write => write_result(op, result),
+fn handle_complete(self: *IO, c: *Continuation, result: i32) void {
+    switch (c.command) {
+        .close => close_result(c, result),
+        .open => open_result(c, result),
+        .read => read_result(c, result),
+        .write => write_result(c, result),
     }
 
-    op.status.* = .completed;
-    self.ops.remove(&op.node);
-    self.unused.append(&op.node);
+    c.status = .completed;
     self.count -= 1;
 }
 
@@ -91,44 +76,30 @@ inline fn get_sqe(self: *IO) SubmitError!*linux.io_uring_sqe {
     };
 }
 
-inline fn add_op(self: *IO, cmd: *Command, status: *Status) SubmitError!*Op {
-    const node = self.unused.pop() orelse {
-        return SubmitError.Retry;
-    };
-
-    var op: *Op = @fieldParentPtr("node", node);
-    op.cmd = cmd;
-    op.status = status;
-
-    status.* = .waiting;
-    self.count += 1;
-
-    return op;
-}
-
 pub fn log(self: *IO, msg: []const u8) void {
     _ = self;
 
     std.debug.print("{s}\n", .{msg});
 }
 
-pub fn close(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
-    assert(cmd.* == .close);
-    assert(status.* == Status.queued);
+pub fn close(self: *IO, c: *Continuation) SubmitError!void {
+    assert(c.command == .close);
+    assert(c.status == Status.queued);
 
-    const data = cmd.close.data;
+    const data = c.command.close.data;
+
     const sqe = try self.get_sqe();
     sqe.prep_close(data.fd);
-    const op = try self.add_op(cmd, status);
-    sqe.user_data = @intFromPtr(op);
+    sqe.user_data = @intFromPtr(c);
+    self.count += 1;
 }
 
-fn close_result(op: *Op, result: i32) void {
-    assert(op.cmd.* == .close);
+fn close_result(c: *Continuation, result: i32) void {
+    assert(c.command == .close);
 
     if (result < 0) {
         const err = @as(std.posix.E, @enumFromInt(-result));
-        op.cmd.close.result = switch (err) {
+        c.command.close.result = switch (err) {
             .BADF => error.FileDescriptorInvalid,
             .DQUOT => error.DiskQuota,
             .IO => error.InputOutput,
@@ -141,26 +112,27 @@ fn close_result(op: *Op, result: i32) void {
 
     assert(result == 0);
 
-    op.cmd.close.result = {};
+    c.command.close.result = {};
 }
 
-pub fn open(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
-    assert(cmd.* == .open);
-    assert(status.* == Status.queued);
+pub fn open(self: *IO, c: *Continuation) SubmitError!void {
+    assert(c.command == .open);
+    assert(c.status == Status.queued);
 
-    const data = cmd.open.data;
+    const data = c.command.open.data;
+
     const sqe = try self.get_sqe();
     sqe.prep_openat(data.dir_fd, data.path, data.flags, data.mode);
-    const op = try self.add_op(cmd, status);
-    sqe.user_data = @intFromPtr(op);
+    sqe.user_data = @intFromPtr(c);
+    self.count += 1;
 }
 
-fn open_result(op: *Op, result: i32) void {
-    assert(op.cmd.* == .open);
+fn open_result(c: *Continuation, result: i32) void {
+    assert(c.command == .open);
 
     if (result < 0) {
         const err = @as(std.posix.E, @enumFromInt(-result));
-        op.cmd.open.result = switch (err) {
+        c.command.open.result = switch (err) {
             .ACCES => error.AccessDenied,
             .AGAIN => error.WouldBlock,
             .BUSY => error.DeviceBusy,
@@ -187,29 +159,30 @@ fn open_result(op: *Op, result: i32) void {
         return;
     }
 
-    op.cmd.open.result = io_impl.OpenResult{
-        .fd = @as(io_impl.fd_t, result),
+    c.command.open.result = io_impl.OpenResult{
+        .fd = @as(fd_t, result),
     };
 }
 
-pub fn read(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
-    assert(cmd.* == .read);
-    assert(status.* == Status.queued);
+pub fn read(self: *IO, c: *Continuation) SubmitError!void {
+    assert(c.command == .read);
+    assert(c.status == Status.queued);
 
-    const data = cmd.read.data;
+    const data = c.command.read.data;
+
     const sqe = try self.get_sqe();
     sqe.prep_read(data.fd, data.buffer, data.offset);
-    const op = try self.add_op(cmd, status);
-    sqe.user_data = @intFromPtr(op);
+    sqe.user_data = @intFromPtr(c);
+    self.count += 1;
 }
 
-fn read_result(op: *Op, result: i32) void {
-    assert(op.cmd.* == .read);
+fn read_result(c: *Continuation, result: i32) void {
+    assert(c.command == .read);
 
     if (result < 0) {
         const err = @as(std.posix.E, @enumFromInt(-result));
 
-        op.cmd.read.result = switch (err) {
+        c.command.read.result = switch (err) {
             .AGAIN => error.Retry,
             .BADF => error.BadFileDescriptor,
             .INTR => error.Retry,
@@ -223,29 +196,30 @@ fn read_result(op: *Op, result: i32) void {
         return;
     }
 
-    op.cmd.read.result = io_impl.ReadResult{
+    c.command.read.result = io_impl.ReadResult{
         .bytes_read = @intCast(result),
     };
 }
 
-pub fn write(self: *IO, cmd: *Command, status: *Status) SubmitError!void {
-    assert(cmd.* == .write);
-    assert(status.* == Status.queued);
+pub fn write(self: *IO, c: *Continuation) SubmitError!void {
+    assert(c.command == .write);
+    assert(c.status == Status.queued);
 
-    const data = cmd.write.data;
+    const data = c.command.write.data;
+
     const sqe = try self.get_sqe();
     sqe.prep_write(data.fd, data.buffer, data.offset);
-    const op = try self.add_op(cmd, status);
-    sqe.user_data = @intFromPtr(op);
+    sqe.user_data = @intFromPtr(c);
+    self.count += 1;
 }
 
-fn write_result(op: *Op, result: i32) void {
-    assert(op.cmd.* == .write);
+fn write_result(c: *Continuation, result: i32) void {
+    assert(c.command == .write);
 
     if (result < 0) {
         const err = @as(std.posix.E, @enumFromInt(-result));
 
-        op.cmd.write.result = switch (err) {
+        c.command.write.result = switch (err) {
             .AGAIN => error.WouldBlock,
             .BADF => error.NotOpenForWriting,
             .DQUOT => error.DiskQuotaExceeded,
@@ -265,7 +239,7 @@ fn write_result(op: *Op, result: i32) void {
         return;
     }
 
-    op.cmd.write.result = io_impl.WriteResult{
+    c.command.write.result = io_impl.WriteResult{
         .bytes_written = @intCast(result),
     };
 }
