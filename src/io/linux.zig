@@ -2,6 +2,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 const expect = std.testing.expect;
 const linux = std.os.linux;
+const std_io = std.io;
+const posix = std.posix;
 const IoUring = linux.IoUring;
 const DoublyLinkedList = std.DoublyLinkedList;
 const tracy = @import("../tracy.zig");
@@ -18,6 +20,9 @@ pub const IO = @This();
 pub const fd_t = linux.fd_t;
 pub const open_flags = linux.O;
 pub const mode_t = linux.mode_t;
+pub const socket_t = fd_t;
+pub const sockaddr_t = posix.sockaddr;
+pub const socklen_t = posix.socklen_t;
 
 ring: IoUring,
 count: usize,
@@ -30,34 +35,26 @@ pub fn init() !IO {
 }
 
 pub fn tick(self: *IO) void {
-    var trace = tracy.traceNamed(@src(), "IO Tick");
-    defer trace.end();
-
-    var submit_trace = tracy.traceNamed(@src(), "Ring Submit");
     _ = self.ring.submit_and_wait(0) catch |err| {
         std.debug.panic("Error submitting: {any}\n", .{err});
     };
-    submit_trace.end();
 
-    var completed_trace = tracy.traceNamed(@src(), "Ring Copy CQES");
     var cqes: [128]linux.io_uring_cqe = undefined;
     const completed = self.ring.copy_cqes(&cqes, 0) catch |err| {
         std.debug.panic("Error getting cqes: {any}\n", .{err});
     };
-    completed_trace.end();
 
-    var cqe_trace = tracy.traceNamed(@src(), "cqe loop");
     for (cqes[0..completed]) |cqe| {
         if (cqe.user_data == 0) continue;
 
         const c: *Continuation = @ptrFromInt(cqe.user_data);
         self.handle_complete(c, cqe.res);
     }
-    cqe_trace.end();
 }
 
 fn handle_complete(self: *IO, c: *Continuation, result: i32) void {
     switch (c.command) {
+        .accept => accept_result(c, result),
         .close => close_result(c, result),
         .open => open_result(c, result),
         .read => read_result(c, result),
@@ -80,6 +77,53 @@ pub fn log(self: *IO, msg: []const u8) void {
     _ = self;
 
     std.debug.print("{s}\n", .{msg});
+}
+
+pub fn accept(self: *IO, c: *Continuation) SubmitError!void {
+    assert(c.command == .accept);
+    assert(c.status == Status.queued);
+
+    const data = c.command.accept.data;
+
+    const sqe = try self.get_sqe();
+    sqe.prep_accept(
+        data.socket,
+        null,
+        null,
+        posix.SOCK.CLOEXEC,
+    );
+
+    sqe.user_data = @intFromPtr(c);
+    self.count += 1;
+}
+
+pub fn accept_result(c: *Continuation, result: i32) void {
+    assert(c.command == .accept);
+    if (result < 0) {
+        const err = @as(std.posix.E, @enumFromInt(-result));
+        c.command.accept.result = switch (err) {
+            .INTR => error.Retry,
+            .AGAIN => error.WouldBlock,
+            .BADF => error.FileDescriptorInvalid,
+            .CONNABORTED => error.ConnectionAborted,
+            .INVAL => error.SocketNotListening,
+            .MFILE => error.ProcessFdQuotaExceeded,
+            .NFILE => error.SystemFdQuotaExceeded,
+            .NOBUFS => error.NoBufferSpace,
+            .NOMEM => error.NoSpaceLeft,
+            .NOTSOCK => error.FileDescriptorNotASocket,
+            .OPNOTSUPP => error.OperationNotSupported,
+            .PERM => error.PermissionDenied,
+            .PROTO => error.ProtocolFailure,
+            else => error.Unexpected,
+        };
+
+        return;
+    }
+
+    c.command.accept.result = io_impl.AcceptResult{
+        .fd = @as(fd_t, result),
+    };
 }
 
 pub fn close(self: *IO, c: *Continuation) SubmitError!void {
@@ -242,6 +286,49 @@ fn write_result(c: *Continuation, result: i32) void {
     c.command.write.result = io_impl.WriteResult{
         .bytes_written = @intCast(result),
     };
+}
+
+pub fn open_socket(self: *IO, family: u32) !linux.socket_t {
+    _ = self;
+
+    const fd = try posix.socket(
+        family,
+        posix.SOCK.STREAM | posix.SOCK.CLOEXEC,
+        std.posix.IPPROTO.TCP,
+    );
+    errdefer posix.close(fd);
+
+    return fd;
+}
+
+pub fn listen(
+    self: *IO,
+    fd: linux.socket_t,
+    address: std.net.Address,
+) !std.net.Address {
+    _ = self;
+
+    // TODO: Handle all options
+    try posix.setsockopt(
+        fd,
+        posix.SOL.SOCKET,
+        posix.SO.REUSEADDR,
+        &std.mem.toBytes(@as(c_int, 1)),
+    );
+
+    try posix.bind(fd, &address.any, address.getOsSockLen());
+
+    var resolved_address: std.net.Address = .{ .any = undefined };
+    var addrlen: posix.socklen_t = @sizeOf(std.net.Address);
+    try posix.getsockname(fd, &resolved_address.any, &addrlen);
+
+    assert(resolved_address.getOsSockLen() == addrlen);
+    assert(resolved_address.any.family == address.any.family);
+
+    // TODO: magic number
+    try posix.listen(fd, 128);
+
+    return resolved_address;
 }
 
 test "can open directories and files" {

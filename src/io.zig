@@ -20,6 +20,7 @@ pub const SubmitError = error{
 };
 
 pub const Command = union(enum) {
+    accept: AcceptCmd,
     close: CloseCmd,
     open: OpenCmd,
     read: ReadCmd,
@@ -157,5 +158,41 @@ pub const CloseData = struct {
 
     pub fn to_cmd(self: CloseData) Command {
         return Command{ .close = CloseCmd.init(self) };
+    }
+};
+
+pub const AcceptError = error{
+    WouldBlock,
+    FileDescriptorInvalid,
+    ConnectionAborted,
+    SocketNotListening,
+    ProcessFdQuotaExceeded,
+    SystemFdQuotaExceeded,
+    NoBufferSpace,
+    NoSpaceLeft,
+    FileDescriptorNotASocket,
+    OperationNotSupported,
+    PermissionDenied,
+    ProtocolFailure,
+    Retry,
+    Unexpected,
+};
+
+pub const AcceptCmd = cmd(AcceptData, AcceptError!AcceptResult);
+pub const AcceptData = struct {
+    socket: IO.socket_t,
+    address: IO.sockaddr_t,
+    address_size: IO.socklen_t = @sizeOf(IO.sockaddr_t),
+
+    pub fn to_cmd(self: AcceptData) Command {
+        return Command{ .accept = AcceptCmd.init(self) };
+    }
+};
+
+pub const AcceptResult = struct {
+    fd: IO.fd_t,
+
+    comptime {
+        assert(@sizeOf(AcceptResult) == @sizeOf(IO.fd_t));
     }
 };

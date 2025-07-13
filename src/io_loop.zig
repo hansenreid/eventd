@@ -59,11 +59,14 @@ fn handle_queued(self: *IOLoop, c: *Continuation) void {
     defer trace.end();
 
     const err = switch (c.command) {
+        .accept => self.io.accept(c),
         .close => self.io.close(c),
         .open => self.io.open(c),
         .write => self.io.write(c),
         .read => self.io.read(c),
     };
+
+    c.status = .waiting;
 
     err catch |e| {
         var err_trace = tracy.traceNamed(@src(), "handle retry");
@@ -124,6 +127,26 @@ pub const Continuation = struct {
         ptr.callback = callback;
     }
 };
+
+pub fn accept(
+    self: *IOLoop,
+    socket: IO.socket_t,
+    address: IO.sockaddr_t,
+    address_size: IO.socklen_t,
+    continuation: *Continuation,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+) void {
+    _ = address;
+    _ = address_size;
+    const data = io_impl.AcceptData{
+        .socket = socket,
+        .address = undefined,
+        .address_size = @sizeOf(std.posix.sockaddr),
+    };
+
+    continuation.init(data.to_cmd(), callback);
+    self.enqueue(continuation);
+}
 
 pub fn open(
     self: *IOLoop,
