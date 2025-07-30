@@ -23,6 +23,7 @@ pub const mode_t = linux.mode_t;
 pub const socket_t = fd_t;
 pub const sockaddr_t = posix.sockaddr;
 pub const socklen_t = posix.socklen_t;
+pub const timespec_t = linux.kernel_timespec;
 
 ring: IoUring,
 count: usize,
@@ -45,6 +46,7 @@ pub fn tick(self: *IO) void {
     };
 
     for (cqes[0..completed]) |cqe| {
+        // TODO: assert that user data is not 0
         if (cqe.user_data == 0) continue;
 
         const c: *Continuation = @ptrFromInt(cqe.user_data);
@@ -53,12 +55,14 @@ pub fn tick(self: *IO) void {
 }
 
 fn handle_complete(self: *IO, c: *Continuation, result: i32) void {
+    assert(c.status == .waiting);
     switch (c.command) {
         .accept => accept_result(c, result),
         .close => close_result(c, result),
         .open => open_result(c, result),
         .read => read_result(c, result),
         .write => write_result(c, result),
+        .timeout => timeout_result(c, result),
     }
 
     c.status = .completed;
@@ -286,6 +290,34 @@ fn write_result(c: *Continuation, result: i32) void {
     c.command.write.result = io_impl.WriteResult{
         .bytes_written = @intCast(result),
     };
+}
+
+pub fn timeout(self: *IO, c: *Continuation) SubmitError!void {
+    assert(c.command == .timeout);
+    assert(c.status == Status.queued);
+
+    const data = c.command.timeout.data;
+
+    const sqe = try self.get_sqe();
+    sqe.prep_timeout(&data.ts, 3, data.flags);
+    sqe.user_data = @intFromPtr(c);
+    self.count += 1;
+}
+
+fn timeout_result(c: *Continuation, result: i32) void {
+    assert(c.command == .timeout);
+    assert(result < 0);
+
+    const err = @as(std.posix.E, @enumFromInt(-result));
+
+    c.command.timeout.result = switch (err) {
+        .TIME => io_impl.TimeoutResult{},
+        .INVAL => error.InvalidArgument,
+        .FAULT => error.Fault,
+        else => error.Unexpected,
+    };
+
+    return;
 }
 
 pub fn open_socket(self: *IO, family: u32) !linux.socket_t {

@@ -17,22 +17,21 @@ var done = false;
 pub fn main() !void {
     var io = try IO.init();
 
-    const address = try std.net.Address.parseIp("127.0.0.1", 5678);
-    const fd = try io.open_socket(address.any.family);
-    defer posix.close(fd);
+    // const address = try std.net.Address.parseIp("127.0.0.1", 5678);
+    // const fd = try io.open_socket(address.any.family);
+    // defer posix.close(fd);
 
-    const resolved_address = try io.listen(fd, address);
-    _ = resolved_address;
+    // const resolved_address = try io.listen(fd, address);
+    // _ = resolved_address;
 
     var loop = IOLoop.init(&io);
     var continuations: [10]IOLoop.Continuation = undefined;
 
-    loop.accept(fd, address.any, address.getOsSockLen(), &continuations[0], dummy);
+    loop.timeout(3, &continuations[0], dummy);
+    // loop.accept(fd, address.any, address.getOsSockLen(), &continuations[0], dummy);
 
     while (!done) {
         loop.tick();
-        std.debug.print("Ticking\n", .{});
-        std.Thread.sleep(std.time.ns_per_s);
     }
 }
 
@@ -41,7 +40,7 @@ fn dummy(context: *anyopaque, continuation: *IOLoop.Continuation) void {
     _ = loop;
 
     std.debug.print("result: {any}\n", .{continuation.status});
-    std.debug.print("result: {any}\n", .{continuation.command.accept.result});
+    std.debug.print("result: {any}\n", .{continuation.command.timeout.result});
 
-    done = true;
+    // done = true;
 }

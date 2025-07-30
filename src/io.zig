@@ -25,6 +25,7 @@ pub const Command = union(enum) {
     open: OpenCmd,
     read: ReadCmd,
     write: WriteCmd,
+    timeout: TimeoutCmd,
 };
 
 pub fn cmd(data_t: type, result_t: type) type {
@@ -196,3 +197,21 @@ pub const AcceptResult = struct {
         assert(@sizeOf(AcceptResult) == @sizeOf(IO.fd_t));
     }
 };
+
+pub const TimeoutError = error{
+    InvalidArgument,
+    Fault,
+    Unexpected,
+};
+
+pub const TimeoutCmd = cmd(TimeoutData, TimeoutError!TimeoutResult);
+pub const TimeoutData = struct {
+    ts: IO.timespec_t,
+    flags: u32,
+
+    pub fn to_cmd(self: TimeoutData) Command {
+        return Command{ .timeout = TimeoutCmd.init(self) };
+    }
+};
+
+pub const TimeoutResult = struct {};

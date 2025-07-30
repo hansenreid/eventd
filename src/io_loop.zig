@@ -64,6 +64,7 @@ fn handle_queued(self: *IOLoop, c: *Continuation) void {
         .open => self.io.open(c),
         .write => self.io.write(c),
         .read => self.io.read(c),
+        .timeout => self.io.timeout(c),
     };
 
     c.status = .waiting;
@@ -180,6 +181,24 @@ pub fn read(
         .fd = fd,
         .buffer = buffer,
         .offset = offset,
+    };
+
+    continuation.init(data.to_cmd(), callback);
+    self.enqueue(continuation);
+}
+
+pub fn timeout(
+    self: *IOLoop,
+    seconds: i64,
+    continuation: *Continuation,
+    callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+) void {
+    const data = io_impl.TimeoutData{
+        .ts = .{
+            .sec = seconds,
+            .nsec = 0,
+        },
+        .flags = 0,
     };
 
     continuation.init(data.to_cmd(), callback);
