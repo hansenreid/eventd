@@ -16,6 +16,18 @@ const tracy = @import("tracy.zig");
 var done = false;
 pub fn main() !void {
     var io = try IO.init();
+    var timeout_c: IOLoop.Continuation = undefined;
+
+    const data = io_impl.TimeoutData{
+        .ts = .{
+            .sec = 1,
+            .nsec = 0,
+            // .nsec = std.time.ns_per_ms * 10,
+        },
+        .flags = 0,
+    };
+
+    timeout_c.init(data.to_cmd(), dummy);
 
     // const address = try std.net.Address.parseIp("127.0.0.1", 5678);
     // const fd = try io.open_socket(address.any.family);
@@ -25,9 +37,8 @@ pub fn main() !void {
     // _ = resolved_address;
 
     var loop = IOLoop.init(&io);
-    var continuations: [10]IOLoop.Continuation = undefined;
+    // loop.enqueue(&timeout_c);
 
-    loop.timeout(3, &continuations[0], dummy);
     // loop.accept(fd, address.any, address.getOsSockLen(), &continuations[0], dummy);
 
     while (!done) {
@@ -42,5 +53,5 @@ fn dummy(context: *anyopaque, continuation: *IOLoop.Continuation) void {
     std.debug.print("result: {any}\n", .{continuation.status});
     std.debug.print("result: {any}\n", .{continuation.command.timeout.result});
 
-    // done = true;
+    done = true;
 }

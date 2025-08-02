@@ -34,27 +34,63 @@ pub fn init() !IO {
         .count = 0,
     };
 }
+//0      io_uring:io_uring_local_work_run
+//0      io_uring:io_uring_short_write
+//1      io_uring:io_uring_task_work_run
+//0      io_uring:io_uring_cqe_overflow
+//0      io_uring:io_uring_req_failed
+//0      io_uring:io_uring_task_add
+//0      io_uring:io_uring_poll_arm
+//1      io_uring:io_uring_submit_req
+//1      io_uring:io_uring_complete
+//0      io_uring:io_uring_fail_link
+//0      io_uring:io_uring_cqring_wait
+//0      io_uring:io_uring_link
+//0      io_uring:io_uring_defer
+//0      io_uring:io_uring_queue_async_work
+//0      io_uring:io_uring_file_get
+//0      io_uring:io_uring_register
+//1      io_uring:io_uring_create
 
 pub fn tick(self: *IO) void {
-    _ = self.ring.submit_and_wait(0) catch |err| {
-        std.debug.panic("Error submitting: {any}\n", .{err});
+    // std.debug.print("IO tick\n", .{});
+    var tick_timeout: Continuation = undefined;
+    const data = io_impl.TimeoutData{
+        .ts = .{
+            .sec = 1,
+            .nsec = 0,
+            // .nsec = std.time.ns_per_ms * 10,
+        },
+        .flags = 0,
     };
 
-    var cqes: [128]linux.io_uring_cqe = undefined;
-    const completed = self.ring.copy_cqes(&cqes, 0) catch |err| {
-        std.debug.panic("Error getting cqes: {any}\n", .{err});
+    tick_timeout.init(data.to_cmd(), Continuation.no_op);
+    self.timeout(&tick_timeout) catch |err| {
+        std.debug.panic("Error submitting timeout: {any}\n", .{err});
     };
 
-    for (cqes[0..completed]) |cqe| {
-        // TODO: assert that user data is not 0
-        if (cqe.user_data == 0) continue;
+    while (tick_timeout.status != .completed) {
+        _ = self.ring.submit_and_wait(0) catch |err| {
+            std.debug.panic("Error submitting: {any}\n", .{err});
+        };
 
-        const c: *Continuation = @ptrFromInt(cqe.user_data);
-        self.handle_complete(c, cqe.res);
+        var cqes: [128]linux.io_uring_cqe = undefined;
+        const completed = self.ring.copy_cqes(&cqes, 0) catch |err| {
+            std.debug.panic("Error getting cqes: {any}\n", .{err});
+        };
+
+        for (cqes[0..completed]) |cqe| {
+            // TODO: assert that user data is not 0
+            if (cqe.user_data == 0) continue;
+
+            const c: *Continuation = @ptrFromInt(cqe.user_data);
+            self.handle_complete(c, cqe.res);
+        }
     }
 }
 
 fn handle_complete(self: *IO, c: *Continuation, result: i32) void {
+    std.debug.print("Status: {any}\n", .{c.status});
     assert(c.status == .waiting);
     switch (c.command) {
         .accept => accept_result(c, result),

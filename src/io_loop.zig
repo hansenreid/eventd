@@ -31,17 +31,23 @@ pub fn init(io: *IO) IOLoop {
 
 pub fn tick(self: *IOLoop) void {
     self.assert_invariants();
-    tracy.frameMarkNamed("IO Loop Tick");
-    var trace = tracy.traceNamed(@src(), "IO Loop Tick");
-    defer trace.end();
+
+    var count: usize = 0;
 
     var node = self.continuations.first;
     while (node) |n| {
+        if (count > 20) {
+            return;
+        }
+        count += 1;
+
         const c: *Continuation = @fieldParentPtr("node", n);
 
         // Need to set next before potentially removing
         // the current node on completion
+        assert(node != n.next);
         node = n.next;
+
         switch (c.status) {
             .queued => self.handle_queued(c),
             .waiting => {},
@@ -55,9 +61,6 @@ pub fn tick(self: *IOLoop) void {
 }
 
 fn handle_queued(self: *IOLoop, c: *Continuation) void {
-    var trace = tracy.traceNamed(@src(), "handle submitted");
-    defer trace.end();
-
     const err = switch (c.command) {
         .accept => self.io.accept(c),
         .close => self.io.close(c),
@@ -70,8 +73,6 @@ fn handle_queued(self: *IOLoop, c: *Continuation) void {
     c.status = .waiting;
 
     err catch |e| {
-        var err_trace = tracy.traceNamed(@src(), "handle retry");
-
         switch (e) {
             error.Retry => {
                 c.status = .queued;
@@ -79,15 +80,10 @@ fn handle_queued(self: *IOLoop, c: *Continuation) void {
             },
             else => std.debug.panic("Error submitting: {any}\n", .{e}),
         }
-
-        err_trace.end();
     };
 }
 
 fn handle_completed(self: *IOLoop, continuation: *Continuation) void {
-    var trace = tracy.traceNamed(@src(), "handle completed");
-    defer trace.end();
-
     continuation.callback(self, continuation);
     self.continuations.remove(&continuation.node);
     self.count -= 1;
@@ -111,6 +107,11 @@ pub const Continuation = struct {
     status: Status,
     node: DoublyLinkedList.Node,
     callback: *const fn (context: *anyopaque, continuation: *Continuation) void,
+
+    pub fn no_op(context: *anyopaque, continuation: *Continuation) void {
+        _ = context;
+        _ = continuation;
+    }
 
     pub const Status = enum {
         queued,
